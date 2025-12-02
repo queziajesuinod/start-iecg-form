@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # Aplicação START IECG
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: start-iecg-form
+    restart: unless-stopped
+    networks:
+      - traefik-network
+    labels:
+      # Habilitar Traefik para este container
+      - "traefik.enable=true"
+      
+      # Configuração HTTP (redireciona para HTTPS)
+      - "traefik.http.routers.start-iecg-http.rule=Host(`start.iecg.com.br`)"
+      - "traefik.http.routers.start-iecg-http.entrypoints=web"
+      - "traefik.http.routers.start-iecg-http.middlewares=redirect-to-https"
+      
+      # Configuração HTTPS
+      - "traefik.http.routers.start-iecg-https.rule=Host(`start.iecg.com.br`)"
+      - "traefik.http.routers.start-iecg-https.entrypoints=websecure"
+      - "traefik.http.routers.start-iecg-https.tls=true"
+      - "traefik.http.routers.start-iecg-https.tls.certresolver=letsencrypt"
+      
+      # Configuração do serviço
+      - "traefik.http.services.start-iecg.loadbalancer.server.port=3000"
+      
+      # Middleware de redirecionamento HTTPS
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
+
+  # Traefik Reverse Proxy
+  traefik:
+    image: traefik:v3.2
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"     # HTTP
+      - "443:443"   # HTTPS
+      - "8080:8080" # Dashboard (opcional, remover em produção)
+    networks:
+      - traefik-network
+    volumes:
+      # Socket Docker para auto-discovery
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Certificados SSL
+      - ./traefik/acme.json:/acme.json
+      # Configuração (opcional)
+      - ./traefik/traefik.yml:/traefik.yml:ro
+    command:
+      # Entrypoints
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      
+      # Provider Docker
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=traefik-network"
+      
+      # Certificados SSL Let's Encrypt
+      - "--certificatesresolvers.letsencrypt.acme.email=contato@iecg.com.br"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      
+      # Dashboard (comentar em produção)
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      
+      # Logs
+      - "--log.level=INFO"
+      - "--accesslog=true"
+
+networks:
+  traefik-network:
+    name: traefik-network
+    driver: bridge
