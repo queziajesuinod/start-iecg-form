@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CheckCircle2, Heart, X } from "lucide-react";
+import { CheckCircle2, Heart, Play, X } from "lucide-react";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -177,7 +177,7 @@ export default function StartForm() {
       <header className="bg-white shadow-sm border-b border-blue-100">
         <div className="container py-6 flex flex-col items-center gap-3">
           <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl flex items-center justify-center shadow-lg animate-fade-in">
-            <Heart className="w-8 h-8 text-white fill-white" />
+            <Play className="w-8 h-8 text-white fill-white" />
           </div>
           <div className="text-center">
             <h1 className="text-3xl md:text-4xl font-bold text-blue-900 tracking-tight">
@@ -190,18 +190,6 @@ export default function StartForm() {
         </div>
       </header>
 
-      {/* Welcome Banner */}
-      <div className="container mt-6 animate-fade-in-up">
-        <div className="bg-gradient-to-r from-blue-100 to-green-100 border-l-4 border-blue-600 rounded-lg p-4 shadow-sm">
-          <p className="text-gray-800 text-sm md:text-base flex items-start gap-2">
-            <span className="text-xl">✨</span>
-            <span>
-              Seja bem-vindo, aqui é um lugar de novos começos{" "}
-              <span className="text-xl">◀</span>
-            </span>
-          </p>
-        </div>
-      </div>
 
       {/* Success Message */}
       {showSuccess && (
@@ -227,7 +215,7 @@ export default function StartForm() {
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-1">START</h2>
             <p className="text-sm text-gray-600 uppercase tracking-wide">
-              Orientando um novo começo
+              Seja bem-vindo, aqui é um lugar de novos começos!
             </p>
           </div>
 
@@ -509,7 +497,7 @@ export default function StartForm() {
       <footer className="bg-white border-t border-gray-200 py-6 mt-12">
         <div className="container text-center">
           <p className="text-sm text-gray-600">
-            © 2025 IECG - Igreja Evangélica Comunidade da Graça
+            © 2025 IECG - Igreja Evangélica Comunidade Global
           </p>
           <p className="text-xs text-gray-500 mt-1">
             Orientando um novo começo

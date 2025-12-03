@@ -1,0 +1,29 @@
+
+FROM node:20 AS builder
+
+WORKDIR /app
+
+# Clonar o repositório
+RUN git clone https://github.com/queziajesuinod/start-iecg-form.git .
+
+# Instalar pnpm
+RUN npm install -g pnpm@10.4.1
+
+# Instalar todas as dependências (incluindo dev, pois o servidor importa Vite)
+RUN pnpm install 
+
+RUN pnpm build
+
+# Expor porta
+EXPOSE 3007
+
+# Definir ambiente de produção
+ENV NODE_ENV=production
+
+# Iniciar aplicação
+CMD ["pnpm", "start"]
+
+
+
+
+

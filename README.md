@@ -200,5 +200,5 @@ Para problemas ou dúvidas, entre em contato com a equipe de TI da IECG.
 
 ---
 
-**IECG - Igreja Evangélica Comunidade da Graça**  
+**IECG - Igreja Evangélica Comunidade Global**  
 Orientando um novo começo ✨
