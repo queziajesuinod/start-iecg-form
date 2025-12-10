@@ -13,7 +13,7 @@ import {
 import { trpc } from "@/lib/trpc";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CheckCircle2, Heart, Play, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -33,15 +33,15 @@ const CAMPUS_OPTIONS = [
 ];
 
 const REDE_OPTIONS = [
-  "RELEVANTE JUNIORS RAPAZES",
-  "RELEVANTEEN RAPAZES",
-  "RELEVANTEEN MOÇAS",
-  "JUVENTUDE RELEVANTE RAPAZES",
-  "MULHERES IECG",
   "IECG KIDS",
+  "MULHERES IECG",
   "HOMENS IECG",
+  "RELEVANTEEN RAPAZES (10-14 ANOS)",
+  "RELEVANTEEN MOÇAS (10-14 ANOS)",
+  "RELEVANTE JUNIORS MOÇAS (15-19 ANOS)",
+  "RELEVANTE JUNIORS RAPAZES (15-19 ANOS)",
   "JUVENTUDE RELEVANTE MOÇAS",
-  "RELEVANTE JUNIORS MOÇAS",
+  "JUVENTUDE RELEVANTE RAPAZES",
 ];
 
 const DECISAO_OPTIONS = [
@@ -59,19 +59,31 @@ const DECISAO_OPTIONS = [
   },
 ];
 
-const formSchema = z.object({
-  campus: z.string().min(1, "Campus é obrigatório"),
-  nome: z.string().min(3, "Nome deve ter pelo menos 3 caracteres"),
-  idade: z.coerce.number().min(1, "Idade é obrigatória").max(150),
-  whatsapp: z.string().min(14, "WhatsApp inválido"),
-  rede: z.string().min(1, "Rede é obrigatória"),
-  decisao: z.string().min(1, "Decisão é obrigatória"),
-  direcionar_celula: z.boolean().default(true),
-  bairro_apelo: z.string().optional(),
-  cidade_apelo: z.string().optional(),
-  estado_apelo: z.string().optional(),
-  bairro_proximo: z.array(z.string()).default([]),
-});
+const formSchema = z
+  .object({
+    campus: z.string().min(1, "Campus é obrigatório"),
+    nome: z.string().min(3, "Nome deve ter pelo menos 3 caracteres"),
+    idade: z.coerce.number().min(1, "Idade é obrigatória").max(150),
+    whatsapp: z.string().min(14, "WhatsApp inválido"),
+    rede: z.string().min(1, "Rede é obrigatória"),
+    decisao: z.string().min(1, "Decisão é obrigatória"),
+    direcionar_celula: z.boolean().default(false),
+    bairro_apelo: z.string().optional(),
+    cidade_apelo: z.string().optional(),
+    estado_apelo: z.string().optional(),
+    bairro_proximo: z.array(z.string()).default([]),
+  })
+  .superRefine((data, ctx) => {
+    if (data.direcionar_celula) {
+      if (!data.bairro_apelo || data.bairro_apelo.trim().length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["bairro_apelo"],
+          message: "Bairro e obrigatorio para encaminhamento",
+        });
+      }
+    }
+  });
 
 type FormData = z.infer<typeof formSchema>;
 
@@ -96,7 +108,7 @@ export default function StartForm() {
       whatsapp: "",
       rede: "",
       decisao: "",
-      direcionar_celula: true,
+      direcionar_celula: false,
       bairro_apelo: "",
       cidade_apelo: "Campo Grande",
       estado_apelo: "Mato Grosso do Sul",
@@ -104,17 +116,25 @@ export default function StartForm() {
     },
   });
 
+  const decisaoSelecionada = watch("decisao");
   const direcionarCelula = watch("direcionar_celula");
   const bairrosProximos = watch("bairro_proximo");
+  const isEncaminhamento = decisaoSelecionada === "encaminhamento_celula";
+
+  useEffect(() => {
+    if (isEncaminhamento) {
+      setValue("direcionar_celula", true);
+    }
+  }, [isEncaminhamento, setValue]);
 
   const submitMutation = trpc.direcionamentos.submit.useMutation({
     onSuccess: () => {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo({ top: 0, behavior: "smooth" });
       setShowSuccess(true);
       reset();
       setTimeout(() => setShowSuccess(false), 5000);
     },
-    onError: (error) => {
+    onError: error => {
       toast.error("Erro ao enviar", {
         description: error.message || "Tente novamente mais tarde",
       });
@@ -143,8 +163,7 @@ export default function StartForm() {
   const formatWhatsapp = (value: string) => {
     const digits = value.replace(/\D/g, "").slice(0, 11);
     if (digits.length <= 2) return digits;
-    if (digits.length <= 7)
-      return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
     return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
   };
 
@@ -167,7 +186,7 @@ export default function StartForm() {
   const removeBairroProximo = (bairro: string) => {
     setValue(
       "bairro_proximo",
-      bairrosProximos.filter((b) => b !== bairro)
+      bairrosProximos.filter(b => b !== bairro)
     );
   };
 
@@ -189,7 +208,6 @@ export default function StartForm() {
           </div>
         </div>
       </header>
-
 
       {/* Success Message */}
       {showSuccess && (
@@ -230,11 +248,14 @@ export default function StartForm() {
                 control={control}
                 render={({ field }) => (
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger id="campus" className="w-full border-2 border-gray-300 focus:border-blue-600">
+                    <SelectTrigger
+                      id="campus"
+                      className="w-full border-2 border-gray-300 focus:border-blue-600"
+                    >
                       <SelectValue placeholder="Escolher" />
                     </SelectTrigger>
                     <SelectContent>
-                      {CAMPUS_OPTIONS.map((campus) => (
+                      {CAMPUS_OPTIONS.map(campus => (
                         <SelectItem key={campus} value={campus}>
                           {campus}
                         </SelectItem>
@@ -313,11 +334,14 @@ export default function StartForm() {
                 control={control}
                 render={({ field }) => (
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger id="rede" className="w-full border-2 border-gray-300 focus:border-blue-600">
+                    <SelectTrigger
+                      id="rede"
+                      className="w-full border-2 border-gray-300 focus:border-blue-600"
+                    >
                       <SelectValue placeholder="Selecione sua rede" />
                     </SelectTrigger>
                     <SelectContent>
-                      {REDE_OPTIONS.map((rede) => (
+                      {REDE_OPTIONS.map(rede => (
                         <SelectItem key={rede} value={rede}>
                           {rede}
                         </SelectItem>
@@ -341,11 +365,14 @@ export default function StartForm() {
                 control={control}
                 render={({ field }) => (
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger id="decisao" className="w-full border-2 border-gray-300 focus:border-blue-600">
+                    <SelectTrigger
+                      id="decisao"
+                      className="w-full border-2 border-gray-300 focus:border-blue-600"
+                    >
                       <SelectValue placeholder="Selecione uma opção" />
                     </SelectTrigger>
                     <SelectContent>
-                      {DECISAO_OPTIONS.map((opcao) => (
+                      {DECISAO_OPTIONS.map(opcao => (
                         <SelectItem key={opcao.value} value={opcao.value}>
                           {opcao.label}
                         </SelectItem>
@@ -368,7 +395,11 @@ export default function StartForm() {
                   <Checkbox
                     id="direcionar_celula"
                     checked={field.value}
-                    onCheckedChange={field.onChange}
+                    disabled={isEncaminhamento}
+                    onCheckedChange={checked => {
+                      if (isEncaminhamento) return;
+                      field.onChange(checked);
+                    }}
                   />
                 )}
               />
@@ -380,8 +411,8 @@ export default function StartForm() {
                   Desejo ser direcionado(a) para uma célula
                 </Label>
                 <p className="text-xs text-gray-600">
-                  Marque esta opção se deseja participar de uma célula próxima
-                  a você
+                  Marque esta opção se deseja participar de uma célula próxima a
+                  você
                 </p>
               </div>
             </div>
@@ -395,13 +426,23 @@ export default function StartForm() {
 
                 {/* Bairro */}
                 <div className="space-y-2">
-                  <Label htmlFor="bairro_apelo">Bairro onde mora:</Label>
+                  <Label htmlFor="bairro_apelo">
+                    Bairro onde mora
+                    {direcionarCelula && (
+                      <span className="text-red-500"> *</span>
+                    )}
+                  </Label>
                   <Input
                     id="bairro_apelo"
                     placeholder="Seu bairro"
                     className="border-2 border-gray-300 focus:border-blue-600"
                     {...register("bairro_apelo")}
                   />
+                  {errors.bairro_apelo && (
+                    <p className="text-sm text-red-600">
+                      {errors.bairro_apelo.message}
+                    </p>
+                  )}
                 </div>
 
                 {/* Cidade */}
@@ -437,8 +478,8 @@ export default function StartForm() {
                       placeholder="Digite um bairro"
                       className="border-2 border-gray-300 focus:border-blue-600"
                       value={bairroTemp}
-                      onChange={(e) => setBairroTemp(e.target.value)}
-                      onKeyDown={(e) => {
+                      onChange={e => setBairroTemp(e.target.value)}
+                      onKeyDown={e => {
                         if (e.key === "Enter") {
                           e.preventDefault();
                           addBairroProximo();
@@ -456,7 +497,7 @@ export default function StartForm() {
                   </div>
                   {bairrosProximos.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-3">
-                      {bairrosProximos.map((bairro) => (
+                      {bairrosProximos.map(bairro => (
                         <div
                           key={bairro}
                           className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm"
