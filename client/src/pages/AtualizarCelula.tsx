@@ -334,7 +334,7 @@ export default function AtualizarCelula() {
                   value={contatoBusca}
                   onChange={e => {
                     const next = e.target.value;
-                    const isEmail = next.includes("@");
+                    const isEmail = /[a-zA-Z@]/.test(next);
                     setContatoBusca(isEmail ? next : formatPhone(next));
                   }}
                   className="mt-1"
