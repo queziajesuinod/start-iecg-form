@@ -4,6 +4,8 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 
+const PUBLIC_API_BASE = "https://portal.iecg.com.br/public";
+
 export const appRouter = router({
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
@@ -39,16 +41,13 @@ export const appRouter = router({
       )
       .mutation(async ({ input }) => {
         try {
-          const response = await fetch(
-            "https://portal.iecg.com.br/public/direcionamentos",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify(input),
-            }
-          );
+          const response = await fetch(`${PUBLIC_API_BASE}/direcionamentos`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(input),
+          });
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
@@ -62,6 +61,81 @@ export const appRouter = router({
         } catch (error: any) {
           console.error("Erro ao enviar direcionamento:", error);
           throw new Error(error.message || "Erro ao enviar o apelo.");
+        }
+      }),
+  }),
+
+  celulas: router({
+    buscarPorContato: publicProcedure
+      .input(
+        z.object({
+          contato: z.string().min(3, "Contato é obrigatório"),
+        })
+      )
+      .query(async ({ input }) => {
+        const url = `${PUBLIC_API_BASE}/celulas/contato?contato=${encodeURIComponent(
+          input.contato
+        )}`;
+        try {
+          const response = await fetch(url, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "no-cache",
+            },
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(
+              errorData?.erro ||
+                errorData?.message ||
+                `Erro ao buscar célula (${response.status})`
+            );
+          }
+
+          const data = await response.json();
+          return { success: true, data };
+        } catch (error: any) {
+          console.error("Erro ao buscar célula:", error);
+          throw new Error(error.message || "Erro ao buscar célula.");
+        }
+      }),
+
+    atualizar: publicProcedure
+      .input(
+        z.object({
+          id: z.string().min(1, "Id é obrigatório"),
+          dados: z.any(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        try {
+          const response = await fetch(
+            `${PUBLIC_API_BASE}/celulas/${input.id}`,
+            {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(input.dados),
+            }
+          );
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(
+              errorData?.erro ||
+                errorData?.message ||
+                `Erro ao atualizar célula (${response.status})`
+            );
+          }
+
+          const data = await response.json();
+          return { success: true, data };
+        } catch (error: any) {
+          console.error("Erro ao atualizar célula:", error);
+          throw new Error(error.message || "Erro ao atualizar célula.");
         }
       }),
   }),

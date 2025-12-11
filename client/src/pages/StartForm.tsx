@@ -44,6 +44,16 @@ const REDE_OPTIONS = [
   "JUVENTUDE RELEVANTE RAPAZES",
 ];
 
+const DIAS_PREFERENCIA = [
+  { value: "Segunda", disabled: false },
+  { value: "Terça", disabled: false },
+  { value: "Quarta", disabled: true },
+  { value: "Quinta", disabled: false },
+  { value: "Sexta", disabled: false },
+  { value: "Sábado", disabled: false },
+  { value: "Domingo", disabled: true },
+];
+
 const DECISAO_OPTIONS = [
   {
     value: "apelo_decisao",
@@ -72,6 +82,8 @@ const formSchema = z
     cidade_apelo: z.string().optional(),
     estado_apelo: z.string().optional(),
     bairro_proximo: z.array(z.string()).default([]),
+    dias_semana: z.array(z.string()).default([]),
+    observacao: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.direcionar_celula) {
@@ -113,6 +125,8 @@ export default function StartForm() {
       cidade_apelo: "Campo Grande",
       estado_apelo: "Mato Grosso do Sul",
       bairro_proximo: [],
+      dias_semana: [],
+      observacao: "",
     },
   });
 
@@ -155,6 +169,8 @@ export default function StartForm() {
       direcionar_celula: data.direcionar_celula,
       campus_iecg: data.campus,
       status: "APELO_CADASTRADO",
+      dias_semana: data.dias_semana || [],
+      observacao: data.observacao || "",
     };
 
     await submitMutation.mutateAsync(payload);
@@ -514,6 +530,58 @@ export default function StartForm() {
                       ))}
                     </div>
                   )}
+                </div>
+
+                {/* Dias de preferência */}
+                <div className="space-y-2">
+                  <Label>Dias de preferência (opcional)</Label>
+                  <p className="text-xs text-gray-500">
+                    Selecione um ou mais dias. Quarta e domingo estão bloqueados.
+                  </p>
+                  <Controller
+                    name="dias_semana"
+                    control={control}
+                    render={({ field }) => (
+                      <div className="grid grid-cols-2 gap-2">
+                        {DIAS_PREFERENCIA.map(dia => {
+                          const checked = field.value?.includes(dia.value);
+                          return (
+                            <label
+                              key={dia.value}
+                              className="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2"
+                            >
+                              <Checkbox
+                                checked={checked}
+                                disabled={dia.disabled}
+                                onCheckedChange={() => {
+                                  if (dia.disabled) return;
+                                  const next = checked
+                                    ? field.value.filter(d => d !== dia.value)
+                                    : [...(field.value || []), dia.value];
+                                  field.onChange(next);
+                                }}
+                              />
+                              <span className={`text-sm ${dia.disabled ? "text-gray-400" : "text-gray-700"}`}>
+                                {dia.value}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  />
+                </div>
+
+                {/* Observação */}
+                <div className="space-y-2">
+                  <Label htmlFor="observacao">Observação (opcional)</Label>
+                  <textarea
+                    id="observacao"
+                    className="w-full rounded-md border border-gray-300 p-2 focus:border-blue-600 focus:outline-none"
+                    rows={3}
+                    {...register("observacao")}
+                    placeholder="Alguma observação ou preferência adicional"
+                  />
                 </div>
               </div>
             )}
