@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { useLocation } from "wouter";
 
 type CelulaForm = {
   id: string;
@@ -126,6 +127,8 @@ export default function AtualizarCelula() {
   const [diasSelecionados, setDiasSelecionados] = useState<string[]>([]);
   const [geoQuery, setGeoQuery] = useState("");
   const [geoLoading, setGeoLoading] = useState(false);
+  const [location] = useLocation();
+  const [pendingPhoneSearch, setPendingPhoneSearch] = useState<string | null>(null);
 
   const contatoEhEmail = useMemo(() => contatoBusca.includes("@"), [contatoBusca]);
   const contatoSanitizado = useMemo(() => {
@@ -144,6 +147,23 @@ export default function AtualizarCelula() {
       .filter(Boolean);
     setDiasSelecionados(dias);
   }, [formData.dia]);
+
+  useEffect(() => {
+    const queryString = location.includes("?") ? location.slice(location.indexOf("?") + 1) : "";
+    const params = new URLSearchParams(queryString);
+    const phoneParam = params.get("phone")?.trim();
+    if (!phoneParam) {
+      return;
+    }
+
+    const digits = phoneParam.replace(/\D/g, "");
+    if (!digits) {
+      return;
+    }
+
+    setContatoBusca(formatPhone(digits));
+    setPendingPhoneSearch(digits);
+  }, [location]);
 
   const buscarCelula = trpc.celulas.buscarPorContato.useQuery(
     { contato: contatoSanitizado },
@@ -265,6 +285,20 @@ export default function AtualizarCelula() {
       toast.error("Erro ao buscar célula.");
     }
   };
+
+  useEffect(() => {
+    if (!pendingPhoneSearch) {
+      return;
+    }
+
+    if (contatoSanitizado !== pendingPhoneSearch) {
+      return;
+    }
+
+    void handleBuscar().finally(() => {
+      setPendingPhoneSearch(null);
+    });
+  }, [pendingPhoneSearch, contatoSanitizado, handleBuscar]);
 
   const handleSalvar = async () => {
     if (!formData.id) {
