@@ -149,8 +149,11 @@ export default function AtualizarCelula() {
   }, [formData.dia]);
 
   useEffect(() => {
-    const queryString = location.includes("?") ? location.slice(location.indexOf("?") + 1) : "";
-    const params = new URLSearchParams(queryString);
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
     const phoneParam = params.get("phone")?.trim();
     if (!phoneParam) {
       return;
