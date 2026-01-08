@@ -62,6 +62,14 @@ const initialForm: CelulaForm = {
   pastor_campus: "",
 };
 
+type CampusOption = {
+  id?: string | number;
+  nome?: string;
+  campus?: string;
+};
+
+const getCampusName = (option: CampusOption) => option.nome || option.campus || "";
+
 const REDE_OPTIONS = [
   "RELEVANTE JUNIORS RAPAZES",
   "RELEVANTEEN RAPAZES",
@@ -72,20 +80,6 @@ const REDE_OPTIONS = [
   "HOMENS IECG",
   "JUVENTUDE RELEVANTE MOÇAS",
   "RELEVANTE JUNIORS MOÇAS",
-];
-
-const CAMPUS_OPTIONS = [
-  "CAMPUS IECG CENTRO",
-  "CAMPUS IECG AERO RANCHO",
-  "CAMPUS IECG ARARAQUARA",
-  "CAMPUS IECG BANDEIRANTES",
-  "CAMPUS IECG DOURADOS",
-  "CAMPUS IECG LOS ANGELES",
-  "CAMPUS IECG MARGARIDA",
-  "CAMPUS IECG PALHOÇA",
-  "CAMPUS IECG PONTA PORÃ",
-  "CAMPUS IECG RIBAS DO RIO PARDO",
-  "CAMPUS IECG VILA VELHA",
 ];
 
 const DIAS_SEMANA = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
@@ -206,6 +200,12 @@ export default function AtualizarCelula() {
     { enabled: false, retry: false }
   );
 
+  const campusQuery = trpc.celulas.listarCampi.useQuery();
+  const campusOptions = useMemo<CampusOption[]>(() => {
+    const data = campusQuery.data;
+    return Array.isArray(data) ? data : [];
+  }, [campusQuery.data]);
+
   const atualizarCelula = trpc.celulas.atualizar.useMutation();
   const criarCelula = trpc.celulas.criar.useMutation();
 
@@ -314,6 +314,20 @@ export default function AtualizarCelula() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const handleCampusChange = (value: string) => {
+    const selected = campusOptions.find(option => {
+      if (option.id !== undefined && option.id !== null) {
+        return String(option.id) === value;
+      }
+      return getCampusName(option) === value;
+    });
+    setFormData(prev => ({
+      ...prev,
+      campusId: value,
+      campus: selected ? getCampusName(selected) : prev.campus,
+    }));
+  };
+
   const toggleDia = (dia: string) => {
     setDiasSelecionados(prev => (prev.includes(dia) ? prev.filter(d => d !== dia) : [...prev, dia]));
   };
@@ -361,6 +375,30 @@ export default function AtualizarCelula() {
       setPendingPhoneSearch(null);
     });
   }, [pendingPhoneSearch, contatoSanitizado, handleBuscar]);
+
+  useEffect(() => {
+    if (!campusOptions.length || formData.campusId) {
+      return;
+    }
+
+    const normalizedFormCampus = (formData.campus || "").trim().toLowerCase();
+    if (!normalizedFormCampus) {
+      return;
+    }
+
+    const match = campusOptions.find(option => {
+      const optionName = getCampusName(option).trim().toLowerCase();
+      return optionName && optionName === normalizedFormCampus;
+    });
+
+    if (match && match.id !== undefined && match.id !== null) {
+      setFormData(prev => ({
+        ...prev,
+        campusId: String(match.id),
+        campus: getCampusName(match) || prev.campus,
+      }));
+    }
+  }, [campusOptions, formData.campus, formData.campusId]);
 
   const handleSalvar = async () => {
     try {
@@ -431,9 +469,9 @@ export default function AtualizarCelula() {
       <div className="container py-10">
         <div className="max-w-5xl mx-auto space-y-6">
           <header className="text-center space-y-2">
-            <p className="text-sm uppercase tracking-[0.3em] text-blue-500 font-semibold">Gestão de Células</p>
-            <h1 className="text-3xl md:text-4xl font-bold text-slate-900">Atualizar dados da célula</h1>
-            <p className="text-slate-600">Busque pelo e-mail ou celular do líder e edite as informações necessárias.</p>
+            <p className="text-sm uppercase tracking-[0.3em] text-blue-500 font-semibold">START IECG</p>
+            <h1 className="text-3xl md:text-4xl font-bold text-slate-900">Gestão de Células</h1>
+            <p className="text-slate-600">Busque pelo e-mail ou celular do líder e edite as informações necessárias.Caso não encontre a sua célula, faça o cadastro</p>
           </header>
 
           <Card className="p-6 shadow-xl border border-slate-200 bg-white">
@@ -510,18 +548,37 @@ export default function AtualizarCelula() {
               <div className="space-y-2">
                 <Label>Campus</Label>
                 <Select
-                  value={formData.campus}
-                  onValueChange={value => setFormData(prev => ({ ...prev, campus: value }))}
+                  value={formData.campusId || ""}
+                  onValueChange={handleCampusChange}
+                  disabled={campusQuery.isFetching && !campusOptions.length}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Selecione o campus" />
+                    <SelectValue
+                      placeholder={
+                        campusQuery.isFetching ? "Carregando campus..." : "Selecione o campus"
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    {CAMPUS_OPTIONS.map(option => (
-                      <SelectItem key={option} value={option}>
-                        {option}
+                    {campusOptions.length > 0 ? (
+                      campusOptions.map((option, index) => {
+                        const campusValueRaw = option.id ?? getCampusName(option);
+                        const campusValue =
+                          campusValueRaw !== undefined && campusValueRaw !== null
+                            ? String(campusValueRaw)
+                            : String(index);
+                        const displayName = getCampusName(option) || `Campus ${index + 1}`;
+                        return (
+                          <SelectItem key={`campus-${campusValue}-${index}`} value={campusValue}>
+                            {displayName}
+                          </SelectItem>
+                        );
+                      })
+                    ) : (
+                      <SelectItem value="" disabled>
+                        {campusQuery.isError ? "Erro ao carregar campus" : "Nenhum campus disponível"}
                       </SelectItem>
-                    ))}
+                    )}
                   </SelectContent>
                 </Select>
               </div>

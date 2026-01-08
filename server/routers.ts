@@ -119,7 +119,32 @@ export const appRouter = router({
           console.error("Erro ao criar célula:", error);
           throw new Error(error.message || "Erro ao criar célula.");
         }
-      }),
+    }),
+    listarCampi: publicProcedure.query(async () => {
+      try {
+        const response = await fetch(`${PUBLIC_API_BASE}/campus`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(
+            errorData?.erro ||
+              errorData?.message ||
+              `Erro ao carregar os campus (${response.status})`
+          );
+        }
+
+        const data = await response.json().catch(() => []);
+        return Array.isArray(data) ? data : [];
+      } catch (error: any) {
+        console.error("Erro ao carregar campus:", error);
+        throw new Error(error.message || "Erro ao carregar os campus.");
+      }
+    }),
     buscarPorContato: publicProcedure
       .input(
         z.object({
