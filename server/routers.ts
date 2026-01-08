@@ -5,6 +5,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 
 const PUBLIC_API_BASE = "https://portal.iecg.com.br/public";
+const START_API_BASE = "https://portal.iecg.com.br/start";
 
 export const appRouter = router({
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
@@ -66,6 +67,59 @@ export const appRouter = router({
   }),
 
   celulas: router({
+    criar: publicProcedure
+      .input(
+        z.object({
+          celula: z.string().min(1),
+          rede: z.string().optional(),
+          lider: z.string().optional(),
+          email_lider: z.string().optional(),
+          cel_lider: z.string().optional(),
+          anfitriao: z.string().optional(),
+          campus: z.string().optional(),
+          campusId: z.string().optional(),
+          numero: z.string().optional(),
+          endereco: z.string().optional(),
+          cep: z.string().optional(),
+          bairro: z.string().optional(),
+          cidade: z.string().optional(),
+          estado: z.string().optional(),
+          lideranca: z.string().optional(),
+          pastor_geracao: z.string().optional(),
+          pastor_campus: z.string().optional(),
+          dia: z.string().optional(),
+          lat: z.number().nullable().optional(),
+          lon: z.number().nullable().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        try {
+          const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+          };
+          
+          const response = await fetch(`${PUBLIC_API_BASE}/celula`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(input),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(
+              errorData?.erro ||
+                errorData?.message ||
+                `Erro ao criar célula (${response.status})`
+            );
+          }
+
+          const data = await response.json();
+          return { success: true, data };
+        } catch (error: any) {
+          console.error("Erro ao criar célula:", error);
+          throw new Error(error.message || "Erro ao criar célula.");
+        }
+      }),
     buscarPorContato: publicProcedure
       .input(
         z.object({

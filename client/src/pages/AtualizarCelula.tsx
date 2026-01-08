@@ -10,6 +10,8 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
+const GOOGLE_GEOCODE_KEY = "AIzaSyBs7pQorgiixQJBhXFQFY4_ouvlFXlgFEs";
+
 type CelulaForm = {
   id: string;
   celula: string;
@@ -31,6 +33,8 @@ type CelulaForm = {
   lat: string;
   lon: string;
   horario: string;
+  campusId?: string;
+  pastor_campus?: string;
 };
 
 const initialForm: CelulaForm = {
@@ -54,6 +58,8 @@ const initialForm: CelulaForm = {
   lat: "",
   lon: "",
   horario: "",
+  campusId: "",
+  pastor_campus: "",
 };
 
 const REDE_OPTIONS = [
@@ -98,11 +104,36 @@ const formatHorario = (value: string) => {
   return `${hh}:${mm}`;
 };
 
-const sanitizePayload = (data: CelulaForm, dias: string[]) => ({
-  ...data,
+const cleanDigits = (value?: string) => (value ? value.replace(/\D/g, "") : "");
+
+const parseCoordinate = (value?: string | number | null) => {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (!value) return null;
+  const numeric = Number(String(value).replace(",", "."));
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const buildCelulaPayload = (data: CelulaForm, dias: string[]) => ({
+  celula: data.celula || "",
+  rede: data.rede || "",
+  lider: data.lider || "",
+  email_lider: data.email_lider || "",
+  cel_lider: cleanDigits(data.cel_lider),
+  anfitriao: data.anfitriao || "",
+  campus: data.campus || "",
+  campusId: (data as any).campusId || "",
+  numero: data.numero || "",
+  endereco: data.endereco || "",
+  cep: data.cep || "",
+  bairro: data.bairro || "",
+  cidade: data.cidade || "",
+  estado: data.estado || "",
+  lideranca: data.lideranca || "",
+  pastor_geracao: data.pastor_geracao || "",
+  pastor_campus: (data as any).pastor_campus || "",
   dia: dias.join(", "),
-  lat: data.lat ? parseFloat(data.lat) : null,
-  lon: data.lon ? parseFloat(data.lon) : null,
+  lat: parseCoordinate(data.lat),
+  lon: parseCoordinate(data.lon),
 });
 
 function resolveContato(data: unknown): CelulaForm | null {
@@ -118,6 +149,8 @@ function resolveContato(data: unknown): CelulaForm | null {
     lon: (candidate as any).lon?.toString?.() ?? "",
     dia: (candidate as any).dia ?? "",
     id: (candidate as any).id?.toString?.() ?? "",
+    campusId: (candidate as any).campusId?.toString?.() ?? "",
+    pastor_campus: (candidate as any).pastor_campus ?? "",
   };
 }
 
@@ -174,28 +207,54 @@ export default function AtualizarCelula() {
   );
 
   const atualizarCelula = trpc.celulas.atualizar.useMutation();
+  const criarCelula = trpc.celulas.criar.useMutation();
 
   const fetchGeocode = async (query: string) => {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1`
-    );
+    const params = new URLSearchParams({
+      address: query,
+      key: GOOGLE_GEOCODE_KEY,
+    });
+    const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`);
+    if (!res.ok) {
+      throw new Error("Falha ao consultar o Google Maps.");
+    }
     const data = await res.json();
-
-    if (!Array.isArray(data) || data.length === 0) {
+    if (!data || data.status !== "OK" || !Array.isArray(data.results) || data.results.length === 0) {
       return null;
     }
-
-    const { lat, lon, address = {} } = data[0];
+    const result = data.results[0];
+    const location = result.geometry?.location || {};
+    const components = result.address_components || [];
+    const getComponent = (types: string[]) =>
+      components.find(comp => types.every(type => comp.types.includes(type)))?.long_name || "";
     const bairro =
-      address.suburb || address.neighbourhood || address.city_district || address.quarter || address.village || "";
-    const logradouro = address.road || address.pedestrian || address.cycleway || "";
-    const numeroEncontrado = address.house_number || "";
+      getComponent(["sublocality", "political"]) ||
+      getComponent(["neighborhood", "political"]) ||
+      "";
+    const logradouro = getComponent(["route"]) || "";
+    const numeroEncontrado =
+      getComponent(["street_number"]) ||
+      getComponent(["premise"]) ||
+      getComponent(["subpremise"]) ||
+      "";
     const cidade =
-      address.city || address.town || address.village || address.municipality || address.state_district || "";
-    const estado = address.state || address.region || address.state_district || "";
-    const cepEncontrado = address.postcode || "";
-
-    return { lat, lon, bairro, logradouro, numeroEncontrado, cidade, estado, cepEncontrado };
+      getComponent(["locality"]) ||
+      getComponent(["administrative_area_level_2"]) ||
+      "";
+    const estado =
+      getComponent(["administrative_area_level_1"]) ||
+      "";
+    const cepEncontrado = getComponent(["postal_code"]) || "";
+    return {
+      lat: location.lat,
+      lon: location.lng,
+      bairro,
+      logradouro,
+      numeroEncontrado,
+      cidade,
+      estado,
+      cepEncontrado,
+    };
   };
 
   const geocodeAndFill = async (query: string, showToast = false) => {
@@ -304,10 +363,6 @@ export default function AtualizarCelula() {
   }, [pendingPhoneSearch, contatoSanitizado, handleBuscar]);
 
   const handleSalvar = async () => {
-    if (!formData.id) {
-      toast.error("Busque uma célula antes de atualizar.");
-      return;
-    }
     try {
       const queryParts = [
         formData.endereco,
@@ -340,14 +395,36 @@ export default function AtualizarCelula() {
         }
       }
 
-      const payload = sanitizePayload(mergedForm, diasSelecionados);
-      await atualizarCelula.mutateAsync({ id: formData.id, dados: payload });
-      toast.success("Célula atualizada com sucesso.");
+      const payload = buildCelulaPayload(mergedForm, diasSelecionados);
+      if (mergedForm.id) {
+        await atualizarCelula.mutateAsync({ id: mergedForm.id, dados: payload });
+        toast.success("Célula atualizada com sucesso.");
+      } else {
+        const result = await criarCelula.mutateAsync(payload);
+        toast.success("Célula criada com sucesso.");
+        const responseData = result?.data;
+        let createdId: string | undefined;
+        if (responseData && typeof responseData === "object") {
+          createdId = (responseData as any).id ?? (responseData as any).celula_id;
+          if (!createdId && (responseData as any).celula?.id) {
+            createdId = (responseData as any).celula.id;
+          }
+        } else if (typeof responseData === "string" || typeof responseData === "number") {
+          createdId = responseData.toString();
+        }
+        if (createdId) {
+          setFormData(prev => ({ ...prev, id: createdId }));
+        }
+      }
     } catch (err) {
       console.error("Erro ao salvar", err);
       toast.error("Erro ao salvar os dados.");
     }
   };
+
+  const isEditing = Boolean(formData.id);
+  const isSaving = atualizarCelula.isPending || criarCelula.isPending;
+  const buttonLabel = isSaving ? (isEditing ? "Atualizando..." : "Criando...") : isEditing ? "Atualizar célula" : "Criar célula";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
@@ -529,8 +606,8 @@ export default function AtualizarCelula() {
 
             </div>
 
-            <Button className="mt-6 w-full" onClick={handleSalvar} disabled={atualizarCelula.isPending}>
-              {atualizarCelula.isPending ? "Salvando..." : "Atualizar célula"}
+            <Button className="mt-6 w-full" onClick={handleSalvar} disabled={isSaving}>
+              {buttonLabel}
             </Button>
           </Card>
         </div>
