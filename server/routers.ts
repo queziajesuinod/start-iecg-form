@@ -93,16 +93,19 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input }) => {
+        console.log("Criando célula - payload:", JSON.stringify(input));
         try {
           const headers: Record<string, string> = {
             "Content-Type": "application/json",
           };
           
-          const response = await fetch(`${PUBLIC_API_BASE}/celula`, {
+          const response = await fetch(`${PUBLIC_API_BASE}/celulas`, {
             method: "POST",
             headers,
             body: JSON.stringify(input),
           });
+
+          console.log("Criando célula - status:", response.status);
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
@@ -114,12 +117,13 @@ export const appRouter = router({
           }
 
           const data = await response.json();
+          console.log("Criar célula - resposta:", data);
           return { success: true, data };
         } catch (error: any) {
           console.error("Erro ao criar célula:", error);
           throw new Error(error.message || "Erro ao criar célula.");
         }
-    }),
+      }),
     listarCampi: publicProcedure.query(async () => {
       try {
         const response = await fetch(`${PUBLIC_API_BASE}/campus`, {
@@ -188,7 +192,8 @@ export const appRouter = router({
           dados: z.any(),
         })
       )
-      .mutation(async ({ input }) => {
+    .mutation(async ({ input }) => {
+        console.log("Atualizando célula -> id:", input.id, "payload:", JSON.stringify(input.dados));
         try {
           const response = await fetch(
             `${PUBLIC_API_BASE}/celulas/${input.id}`,
@@ -201,6 +206,8 @@ export const appRouter = router({
             }
           );
 
+          console.log("Atualizando célula - status:", response.status);
+
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(
@@ -211,6 +218,7 @@ export const appRouter = router({
           }
 
           const data = await response.json();
+          console.log("Atualizar célula - resposta:", data);
           return { success: true, data };
         } catch (error: any) {
           console.error("Erro ao atualizar célula:", error);

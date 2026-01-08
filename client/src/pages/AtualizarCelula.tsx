@@ -126,6 +126,7 @@ const buildCelulaPayload = (data: CelulaForm, dias: string[]) => ({
   pastor_geracao: data.pastor_geracao || "",
   pastor_campus: (data as any).pastor_campus || "",
   dia: dias.join(", "),
+  horario: data.horario || "",
   lat: parseCoordinate(data.lat),
   lon: parseCoordinate(data.lon),
 });
@@ -401,6 +402,11 @@ export default function AtualizarCelula() {
   }, [campusOptions, formData.campus, formData.campusId]);
 
   const handleSalvar = async () => {
+    if (!formData.campusId || !(formData.campus || "").trim()) {
+      toast.error("Selecione um campus válido antes de salvar.");
+      return;
+    }
+
     try {
       const queryParts = [
         formData.endereco,
@@ -575,7 +581,7 @@ export default function AtualizarCelula() {
                         );
                       })
                     ) : (
-                      <SelectItem value="" disabled>
+                      <SelectItem value="__no-campus" disabled>
                         {campusQuery.isError ? "Erro ao carregar campus" : "Nenhum campus disponível"}
                       </SelectItem>
                     )}
