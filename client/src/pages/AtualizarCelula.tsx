@@ -584,7 +584,7 @@ export default function AtualizarCelula() {
           {exibindoSelecao && (
             <Card className="p-6 shadow-xl border border-slate-200 bg-white">
               <div className="mb-4">
-                <p className="text-lg font-semibold text-slate-900">Escolha a celula correta</p>
+                <p className="text-lg font-semibold text-slate-900">Escolha a célula correta</p>
                 <p className="text-sm text-slate-500">
                   Foram encontrados {resultadoMultiplo?.length ?? 0} registros para esse contato.
                 </p>
