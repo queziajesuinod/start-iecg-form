@@ -33,15 +33,33 @@ const CAMPUS_OPTIONS = [
 ];
 
 const REDE_OPTIONS = [
-  "IECG KIDS",
-  "MULHERES IECG",
-  "HOMENS IECG",
-  "RELEVANTEEN RAPAZES (10-14 ANOS)",
-  "RELEVANTEEN MOÇAS (10-14 ANOS)",
-  "RELEVANTE JUNIORS MOÇAS (15-19 ANOS)",
-  "RELEVANTE JUNIORS RAPAZES (15-19 ANOS)",
-  "JUVENTUDE RELEVANTE MOÇAS",
-  "JUVENTUDE RELEVANTE RAPAZES",
+  { value: "IECG KIDS", label: "IECG KIDS" },
+  { value: "MULHERES IECG", label: "MULHERES IECG" },
+  { value: "HOMENS IECG", label: "HOMENS IECG" },
+  {
+    value: "RELEVANTEEN RAPAZES",
+    label: "RELEVANTEEN RAPAZES (10-14 ANOS)",
+  },
+  {
+    value: "RELEVANTEEN MOÇAS",
+    label: "RELEVANTEEN MOÇAS (10-14 ANOS)",
+  },
+  {
+    value: "RELEVANTE JUNIORS MOÇAS",
+    label: "RELEVANTE JUNIORS MOÇAS (15-19 ANOS)",
+  },
+  {
+    value: "RELEVANTE JUNIORS RAPAZES",
+    label: "RELEVANTE JUNIORS RAPAZES (15-19 ANOS)",
+  },
+  {
+    value: "JUVENTUDE RELEVANTE MOÇAS",
+    label: "JUVENTUDE RELEVANTE MOÇAS",
+  },
+  {
+    value: "JUVENTUDE RELEVANTE RAPAZES",
+    label: "JUVENTUDE RELEVANTE RAPAZES",
+  },
 ];
 
 const DIAS_PREFERENCIA = [
@@ -362,8 +380,8 @@ export default function StartForm() {
                     </SelectTrigger>
                     <SelectContent>
                       {REDE_OPTIONS.map(rede => (
-                        <SelectItem key={rede} value={rede}>
-                          {rede}
+                        <SelectItem key={rede.value} value={rede.value}>
+                          {rede.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
