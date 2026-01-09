@@ -35,6 +35,7 @@ type CelulaForm = {
   horario: string;
   campusId?: string;
   pastor_campus?: string;
+  ativo?: boolean;
 };
 
 const initialForm: CelulaForm = {
@@ -60,6 +61,7 @@ const initialForm: CelulaForm = {
   horario: "",
   campusId: "",
   pastor_campus: "",
+  ativo: true,
 };
 
 type CampusOption = {
@@ -131,22 +133,45 @@ const buildCelulaPayload = (data: CelulaForm, dias: string[]) => ({
   lon: parseCoordinate(data.lon),
 });
 
-function resolveContato(data: unknown): CelulaForm | null {
-  if (!data || typeof data !== "object") return null;
-  const item = Array.isArray(data) ? data[0] : data;
-  if (!item || typeof item !== "object") return null;
-  const candidate = "celula" in item ? (item as CelulaForm) : ("celula" in (item as any) ? (item as any).celula : null);
-  if (!candidate) return null;
+function extractCelulaRaw(entry: unknown): Record<string, unknown> | null {
+  if (!entry || typeof entry !== "object") return null;
+  if ("celula" in entry && typeof (entry as any).celula === "object") {
+    return (entry as any).celula;
+  }
+  return entry as Record<string, unknown>;
+}
+
+function normalizeCelula(entry: unknown): CelulaForm | null {
+  const raw = extractCelulaRaw(entry);
+  if (!raw) return null;
   return {
     ...initialForm,
-    ...candidate,
-    lat: (candidate as any).lat?.toString?.() ?? "",
-    lon: (candidate as any).lon?.toString?.() ?? "",
-    dia: (candidate as any).dia ?? "",
-    id: (candidate as any).id?.toString?.() ?? "",
-    campusId: (candidate as any).campusId?.toString?.() ?? "",
-    pastor_campus: (candidate as any).pastor_campus ?? "",
+    ...raw,
+    lat: (raw as any).lat?.toString?.() ?? "",
+    lon: (raw as any).lon?.toString?.() ?? "",
+    dia: (raw as any).dia ?? "",
+    id: (raw as any).id?.toString?.() ?? "",
+    campusId: (raw as any).campusId?.toString?.() ?? "",
+    pastor_campus: (raw as any).pastor_campus ?? "",
+    ativo: (raw as any).ativo ?? true,
   };
+}
+
+function buildFormFromCelula(celula: CelulaForm): CelulaForm {
+  return {
+    ...initialForm,
+    ...celula,
+    cel_lider: celula.cel_lider ? formatPhone(celula.cel_lider) : "",
+    horario: celula.horario ? formatHorario(celula.horario) : "",
+  };
+}
+
+function buildCelulaList(data: unknown): CelulaForm[] {
+  if (data === null || data === undefined) return [];
+  const items = Array.isArray(data) ? data : [data];
+  return items
+    .map(normalizeCelula)
+    .filter((value): value is CelulaForm => Boolean(value));
 }
 
 export default function AtualizarCelula() {
@@ -157,6 +182,9 @@ export default function AtualizarCelula() {
   const [geoLoading, setGeoLoading] = useState(false);
   const [location] = useLocation();
   const [pendingPhoneSearch, setPendingPhoneSearch] = useState<string | null>(null);
+  const [resultadoMultiplo, setResultadoMultiplo] = useState<CelulaForm[] | null>(null);
+  const [mostrarSelecao, setMostrarSelecao] = useState(false);
+  const [statusAlterandoId, setStatusAlterandoId] = useState<string | null>(null);
 
   const contatoEhEmail = useMemo(() => contatoBusca.includes("@"), [contatoBusca]);
   const contatoSanitizado = useMemo(() => {
@@ -333,6 +361,42 @@ export default function AtualizarCelula() {
     setDiasSelecionados(prev => (prev.includes(dia) ? prev.filter(d => d !== dia) : [...prev, dia]));
   };
 
+  const handleSelecionarCelula = (celula: CelulaForm) => {
+    setFormData(buildFormFromCelula(celula));
+    setMostrarSelecao(false);
+    toast.success("Célula selecionada para atualização.");
+  };
+
+  const handleToggleCelulaAtiva = async (celula: CelulaForm) => {
+    if (!celula.id) {
+      toast.error("Célula sem identificador não pode ser atualizada.");
+      return;
+    }
+    const novoStatus = celula.ativo === false ? true : false;
+    setStatusAlterandoId(celula.id);
+    try {
+      await atualizarCelula.mutateAsync({ id: celula.id, dados: { ativo: novoStatus } });
+      setResultadoMultiplo(prev =>
+        prev
+          ? prev.map(item => (item.id === celula.id ? { ...item, ativo: novoStatus } : item))
+          : prev
+      );
+      if (formData.id === celula.id) {
+        setFormData(prev => ({ ...prev, ativo: novoStatus }));
+      }
+      toast.success(`Celula ${novoStatus ? "ativada" : "inativada"} com sucesso.`);
+    } catch (err) {
+      console.error("Erro ao alterar status da célula", err);
+      toast.error("Erro ao alterar o status da célula.");
+    } finally {
+      setStatusAlterandoId(null);
+    }
+  };
+
+  const multiploCount = resultadoMultiplo?.length ?? 0;
+  const hasMultipleResultados = multiploCount > 1;
+  const exibindoSelecao = hasMultipleResultados && mostrarSelecao;
+
   const handleBuscar = async () => {
     const trimmed = contatoSanitizado;
     if (!trimmed) {
@@ -342,21 +406,29 @@ export default function AtualizarCelula() {
     try {
       const result = await buscarCelula.refetch();
       if (result.error) {
-        toast.error(result.error.message || "Não foi possível localizar a célula.");
+        toast.error(result.error.message || "Nao foi possivel localizar a célula.");
         return;
       }
-      const celula = resolveContato(result.data?.data);
-      if (!celula || !celula.id) {
+      const celulas = buildCelulaList(result.data?.data);
+      if (celulas.length === 0) {
+        setResultadoMultiplo(null);
+        setMostrarSelecao(false);
         toast.error("Nenhum dado encontrado para o contato informado.");
         return;
       }
-      setFormData({
-        ...initialForm,
-        ...celula,
-        cel_lider: celula.cel_lider ? formatPhone(celula.cel_lider) : "",
-        horario: celula.horario ? formatHorario(celula.horario) : "",
-      });
-      toast.success("Dados da célula carregados.");
+      if (celulas.length === 1) {
+        setResultadoMultiplo(null);
+        setMostrarSelecao(false);
+        setFormData(buildFormFromCelula(celulas[0]));
+        toast.success("Dados da célula carregados.");
+        return;
+      }
+      setResultadoMultiplo(celulas);
+      setMostrarSelecao(true);
+      setFormData(initialForm);
+      toast.info(
+        `Foram encontradas ${celulas.length} células para esse contato. Escolha a que deseja atualizar ou inativar.`
+      );
     } catch (err) {
       console.error("Erro na busca", err);
       toast.error("Erro ao buscar célula.");
@@ -508,7 +580,70 @@ export default function AtualizarCelula() {
             </p>
           </Card>
 
-          <Card className="p-6 shadow-xl border border-slate-200 bg-white">
+
+          {exibindoSelecao && (
+            <Card className="p-6 shadow-xl border border-slate-200 bg-white">
+              <div className="mb-4">
+                <p className="text-lg font-semibold text-slate-900">Escolha a celula correta</p>
+                <p className="text-sm text-slate-500">
+                  Foram encontrados {resultadoMultiplo?.length ?? 0} registros para esse contato.
+                </p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                {resultadoMultiplo?.map((celula, index) => (
+                  <div
+                    key={celula.id || index}
+                    className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-lg font-semibold text-slate-900">
+                          {celula.celula || `Celula ${index + 1}`}
+                        </p>
+                        <p className="text-sm text-slate-500">{celula.rede || "-"}</p>
+                      </div>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          celula.ativo === false ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
+                        }`}
+                      >
+                        {celula.ativo === false ? "Inativa" : "Ativa"}
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-600">Lider: {celula.lider || "-"}</p>
+                    <p className="text-sm text-slate-600">
+                      Celular: {celula.cel_lider ? formatPhone(celula.cel_lider) : "-"}
+                    </p>
+                    <p className="text-sm text-slate-500">Campus: {celula.campus || "-"}</p>
+                    <div className="flex flex-col gap-2 pt-2 sm:flex-row">
+                      <Button className="flex-1" onClick={() => handleSelecionarCelula(celula)}>
+                        Atualizar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => handleToggleCelulaAtiva(celula)}
+                        disabled={!celula.id || statusAlterandoId === celula.id}
+                      >
+                        {celula.ativo === false ? "Reativar" : "Inativar"}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {hasMultipleResultados && !mostrarSelecao && (
+            <div className="flex justify-end">
+              <Button variant="outline" className="w-full md:w-auto" onClick={() => setMostrarSelecao(true)}>
+                Mostrar resultados da busca
+              </Button>
+            </div>
+          )}
+
+          {!exibindoSelecao && (
+            <Card className="p-6 shadow-xl border border-slate-200 bg-white">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="celula">Nome da célula</Label>
@@ -673,6 +808,8 @@ export default function AtualizarCelula() {
               {buttonLabel}
             </Button>
           </Card>
+          )}
+
         </div>
       </div>
     </div>
