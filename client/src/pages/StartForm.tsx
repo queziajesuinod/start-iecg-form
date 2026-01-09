@@ -156,6 +156,10 @@ export default function StartForm() {
   });
 
   const onSubmit = async (data: FormData) => {
+    const status = !data.direcionar_celula && data.decisao !== "encaminhamento_celula"
+      ? "NAO_HAVERAR_DIRECIONAMENTO"
+      : "APELO_CADASTRADO";
+
     const payload = {
       nome: data.nome,
       decisao: data.decisao,
@@ -168,7 +172,7 @@ export default function StartForm() {
       bairro_proximo: data.bairro_proximo || [],
       direcionar_celula: data.direcionar_celula,
       campus_iecg: data.campus,
-      status: "APELO_CADASTRADO",
+      status,
       dias_semana: data.dias_semana || [],
       observacao: data.observacao || "",
     };
