@@ -758,12 +758,6 @@ export default function AtualizarCelula() {
                 <Label htmlFor="estado">Estado</Label>
                 <Input id="estado" value={formData.estado} onChange={handleInputChange("estado")} />
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="lideranca">Liderança</Label>
-                <Input id="lideranca" value={formData.lideranca} onChange={handleInputChange("lideranca")} />
-              </div>
-
               <div className="space-y-2">
                 <Label htmlFor="pastor_geracao">Pastor de geração</Label>
                 <Input
