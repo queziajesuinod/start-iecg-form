@@ -25,6 +25,7 @@ import {
   type FormField,
   type PaymentOption,
 } from '@/lib/eventsApi';
+import { maskCPForCNPJ, maskPhone, validateCPForCNPJ, validateEmail, removeNonDigits } from '@/lib/masks';
 
 export default function EventDetails() {
   const [, setLocation] = useLocation();
@@ -281,10 +282,57 @@ export default function EventDetails() {
 
     switch (campo.fieldType) {
       case 'text':
+        return <Input {...commonProps} type="text" value={valor || ''} onChange={(e) => onChange(e.target.value)} />;
+      
       case 'email':
+        return (
+          <Input 
+            {...commonProps} 
+            type="email" 
+            value={valor || ''} 
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={(e) => {
+              if (e.target.value && !validateEmail(e.target.value)) {
+                toast.error('Email inválido');
+              }
+            }}
+          />
+        );
+      
       case 'phone':
+        return (
+          <Input 
+            {...commonProps} 
+            type="tel" 
+            value={valor || ''} 
+            onChange={(e) => {
+              const masked = maskPhone(e.target.value);
+              onChange(masked);
+            }}
+            maxLength={15}
+          />
+        );
+      
       case 'cpf':
-        return <Input {...commonProps} type={campo.fieldType === 'email' ? 'email' : 'text'} value={valor || ''} onChange={(e) => onChange(e.target.value)} />;
+        return (
+          <Input 
+            {...commonProps} 
+            type="text" 
+            value={valor || ''} 
+            onChange={(e) => {
+              const masked = maskCPForCNPJ(e.target.value);
+              onChange(masked);
+            }}
+            onBlur={(e) => {
+              const digits = removeNonDigits(e.target.value);
+              if (digits && !validateCPForCNPJ(e.target.value)) {
+                toast.error(digits.length === 11 ? 'CPF inválido' : 'CNPJ inválido');
+              }
+            }}
+            placeholder="CPF ou CNPJ"
+            maxLength={18}
+          />
+        );
       
       case 'number':
         return <Input {...commonProps} type="number" value={valor || ''} onChange={(e) => onChange(e.target.value)} />;
