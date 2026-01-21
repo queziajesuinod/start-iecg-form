@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'wouter';
+import { useLocation } from 'wouter';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -7,8 +7,7 @@ import { Copy, Check, QrCode, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function PixConfirmation() {
-  const [, navigate] = useNavigate();
-  const location = useLocation();
+  const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -21,9 +20,9 @@ export default function PixConfirmation() {
 
   useEffect(() => {
     if (!orderCode || !pixCode) {
-      navigate('/');
+      setLocation('/');
     }
-  }, [orderCode, pixCode, navigate]);
+  }, [orderCode, pixCode, setLocation]);
 
   // Polling automático a cada 10 segundos
   useEffect(() => {
@@ -43,7 +42,7 @@ export default function PixConfirmation() {
               description: 'Redirecionando para o seu ticket...',
             });
             setTimeout(() => {
-              navigate(`/ticket/${orderCode}`);
+              setLocation(`/ticket/${orderCode}`);
             }, 1500);
           }
         }
@@ -61,7 +60,7 @@ export default function PixConfirmation() {
 
     // Limpar intervalo ao desmontar componente
     return () => clearInterval(intervalId);
-  }, [orderCode, navigate, toast]);
+  }, [orderCode, setLocation, toast]);
 
   const copyToClipboard = async () => {
     if (!pixCode) return;
@@ -86,7 +85,8 @@ export default function PixConfirmation() {
   const checkPaymentStatus = async () => {
     setChecking(true);
     try {
-      const response = await fetch(`http://localhost:3005/api/public/registrations/${orderCode}/status`);
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3005';
+      const response = await fetch(`${API_URL}/api/public/events/registrations/${orderCode}/status`);
       
       if (!response.ok) {
         throw new Error('Não foi possível verificar o status');
@@ -100,7 +100,7 @@ export default function PixConfirmation() {
           description: 'Redirecionando para o seu ticket...',
         });
         setTimeout(() => {
-          navigate(`/ticket/${orderCode}`);
+          setLocation(`/ticket/${orderCode}`);
         }, 1500);
       } else {
         toast({
