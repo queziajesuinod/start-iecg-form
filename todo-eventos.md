@@ -58,3 +58,7 @@
 - [x] Configurar .env com OAUTH_SERVER_URL
 
 - [x] Restaurar StartForm como página inicial (/) e mover EventList para /eventos
+
+- [x] Corrigir erro CORS no backend portal-iecg
+- [x] Adicionar variável VITE_ANALYTICS_ENDPOINT no .env
+- [ ] Remover script analytics do index.html (opcional)
