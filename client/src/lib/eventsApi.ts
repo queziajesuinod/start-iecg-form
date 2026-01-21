@@ -19,6 +19,7 @@ export interface Event {
   imageUrl?: string;
   maxRegistrations?: number;
   currentRegistrations: number;
+  maxPerBuyer?: number;
   isActive: boolean;
 }
 

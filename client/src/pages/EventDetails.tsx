@@ -341,10 +341,15 @@ export default function EventDetails() {
                 <Input
                   type="number"
                   min="1"
-                  max="10"
+                  max={evento.maxPerBuyer || 10}
                   value={quantidade}
                   onChange={(e) => setQuantidade(Number(e.target.value))}
                 />
+                {evento.maxPerBuyer && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    Máximo {evento.maxPerBuyer} inscrição(ões) por comprador
+                  </p>
+                )}
               </div>
 
               {/* Cupom */}
