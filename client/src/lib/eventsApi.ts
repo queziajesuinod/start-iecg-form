@@ -70,10 +70,13 @@ export interface CouponValidation {
 
 export interface RegistrationData {
   eventId: string;
-  batchId: string;
+  batchId?: string;  // Opcional (retrocompatibilidade)
   quantity: number;
   buyerData: Record<string, any>;
-  attendeesData: Record<string, any>[];
+  attendeesData: Array<{
+    batchId: string;  // Lote específico do inscrito
+    data: Record<string, any>;
+  }>;
   couponCode?: string;
   paymentOptionId: string;
   paymentData: {

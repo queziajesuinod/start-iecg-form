@@ -41,7 +41,6 @@ export default function EventDetails() {
   const [submitting, setSubmitting] = useState(false);
 
   // Estado do formulário
-  const [loteId, setLoteId] = useState<string | null>(null);
   const [cupomCodigo, setCupomCodigo] = useState('');
   const [cupomValido, setCupomValido] = useState<any>(null);
   const [validandoCupom, setValidandoCupom] = useState(false);
@@ -50,7 +49,8 @@ export default function EventDetails() {
     dados: Record<string, any>;
     salvo: boolean;
     id: string;
-  }>>([{ dados: {}, salvo: false, id: '1' }]);
+    batchId: string | null;  // Lote específico do inscrito
+  }>>([{ dados: {}, salvo: false, id: '1', batchId: null }]);
   const [formaPagamento, setFormaPagamento] = useState<string>(''); // ID da forma de pagamento
   const [parcelas, setParcelas] = useState(1);
   const [dadosPagamento, setDadosPagamento] = useState({
@@ -70,7 +70,7 @@ export default function EventDetails() {
       toast.error(`Máximo de ${limite} inscrição(ões) por comprador`);
       return;
     }
-    setInscritos([...inscritos, { dados: {}, salvo: false, id: Date.now().toString() }]);
+    setInscritos([...inscritos, { dados: {}, salvo: false, id: Date.now().toString(), batchId: null }]);
   };
 
   const removerInscrito = (id: string) => {
@@ -129,11 +129,18 @@ export default function EventDetails() {
   };
 
   const handleValidarCupom = async () => {
-    if (!cupomCodigo || !loteId) return;
+    if (!cupomCodigo) return;
+    
+    // Usar o primeiro lote selecionado para validar cupom
+    const primeiroLote = inscritos.find(i => i.batchId)?.batchId;
+    if (!primeiroLote) {
+      toast.error('Selecione um lote antes de validar o cupom');
+      return;
+    }
 
     try {
       setValidandoCupom(true);
-      const resultado = await validarCupom(cupomCodigo, eventId, loteId);
+      const resultado = await validarCupom(cupomCodigo, eventId, primeiroLote);
       if (resultado.valid) {
         setCupomValido(resultado.coupon);
         toast.success('Cupom aplicado com sucesso!');
@@ -149,10 +156,18 @@ export default function EventDetails() {
   };
 
   const calcularValorTotal = () => {
-    const lote = lotes.find((l) => l.id === loteId);
-    if (!lote) return 0;
-
-    let total = Number(lote.price) * inscritos.length;
+    // Somar preço de cada inscrito baseado no seu lote específico
+    let total = 0;
+    for (const inscrito of inscritos) {
+      if (inscrito.batchId) {
+        const lote = lotes.find((l) => l.id === inscrito.batchId);
+        if (lote) {
+          total += Number(lote.price);
+        }
+      }
+    }
+    
+    if (total === 0) return 0;
 
     if (cupomValido) {
       if (cupomValido.discountType === 'percentage') {
@@ -180,9 +195,10 @@ export default function EventDetails() {
   };
 
   const validarFormulario = () => {
-    // Validar lote
-    if (!loteId) {
-      toast.error('Selecione um lote');
+    // Validar que todos os inscritos têm um lote selecionado
+    const inscritosSemLote = inscritos.filter((i) => !i.batchId);
+    if (inscritosSemLote.length > 0) {
+      toast.error(`Selecione um lote para todos os inscritos`);
       return false;
     }
 
@@ -230,10 +246,12 @@ export default function EventDetails() {
       setSubmitting(true);
       const resultado = await processarInscricao({
         eventId,
-        batchId: loteId!,
         quantity: inscritos.length,
         buyerData: dadosComprador,
-        attendeesData: inscritos.map((i) => i.dados),
+        attendeesData: inscritos.map((i) => ({
+          batchId: i.batchId!,
+          data: i.dados
+        })),
         couponCode: cupomValido ? cupomCodigo : undefined,
         paymentOptionId: formaPagamento,
         paymentData: {
@@ -355,7 +373,6 @@ export default function EventDetails() {
 
   const camposComprador = campos.filter((c) => c.section === 'buyer').sort((a, b) => a.orderIndex - b.orderIndex);
   const camposInscrito = campos.filter((c) => c.section === 'attendee').sort((a, b) => a.orderIndex - b.orderIndex);
-  const loteAtual = lotes.find((l) => l.id === loteId);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
@@ -389,25 +406,9 @@ export default function EventDetails() {
           {/* Seleção de Lote e Quantidade */}
           <Card>
             <CardHeader>
-              <CardTitle>Selecione o Lote e Quantidade</CardTitle>
+              <CardTitle>Quantidade de Inscrições</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <Label>Lote</Label>
-                <Select value={loteId || ''} onValueChange={(v) => setLoteId(v)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um lote" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {lotes.map((lote) => (
-                      <SelectItem key={lote.id} value={lote.id}>
-                        {lote.name} - R$ {Number(lote.price).toFixed(2)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
               <div className="bg-blue-50 p-4 rounded-lg">
                 <p className="text-sm text-blue-900">
                   <strong>Quantidade de inscrições:</strong> {inscritos.length}
@@ -431,7 +432,7 @@ export default function EventDetails() {
                 <Button
                   type="button"
                   onClick={handleValidarCupom}
-                  disabled={!cupomCodigo || !loteId || validandoCupom}
+                  disabled={!cupomCodigo || validandoCupom}
                   className="mt-auto"
                 >
                   {validandoCupom ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Aplicar'}
@@ -446,16 +447,22 @@ export default function EventDetails() {
               )}
 
               {/* Resumo */}
-              {loteAtual && (
+              {inscritos.some(i => i.batchId) && (
                 <div className="bg-gray-50 p-4 rounded-lg space-y-2">
                   <div className="flex justify-between">
                     <span>Subtotal:</span>
-                    <span>R$ {(Number(loteAtual.price) * inscritos.length).toFixed(2)}</span>
+                    <span>R$ {inscritos.reduce((sum, i) => {
+                      const lote = lotes.find(l => l.id === i.batchId);
+                      return sum + (lote ? Number(lote.price) : 0);
+                    }, 0).toFixed(2)}</span>
                   </div>
                   {cupomValido && (
                     <div className="flex justify-between text-green-600">
                       <span>Desconto:</span>
-                      <span>- R$ {((Number(loteAtual.price) * inscritos.length) - calcularValorTotal()).toFixed(2)}</span>
+                      <span>- R$ {(inscritos.reduce((sum, i) => {
+                        const lote = lotes.find(l => l.id === i.batchId);
+                        return sum + (lote ? Number(lote.price) : 0);
+                      }, 0) - calcularValorTotal()).toFixed(2)}</span>
                     </div>
                   )}
                   <Separator />
@@ -519,7 +526,14 @@ export default function EventDetails() {
                     <AccordionItem key={inscrito.id} value={inscrito.id}>
                       <AccordionTrigger className="hover:no-underline">
                         <div className="flex items-center gap-2 w-full">
-                          <span className="font-medium">Inscrito {index + 1}</span>
+                          <span className="font-medium">
+                            Inscrito {index + 1}
+                            {inscrito.batchId && (
+                              <span className="text-muted-foreground font-normal ml-2">
+                                - {lotes.find(l => l.id === inscrito.batchId)?.name}
+                              </span>
+                            )}
+                          </span>
                           {inscrito.salvo ? (
                             <Badge variant="secondary" className="ml-2">
                               <Check className="h-3 w-3 mr-1" />
@@ -535,6 +549,33 @@ export default function EventDetails() {
                       </AccordionTrigger>
                       <AccordionContent>
                         <div className="space-y-4 pt-4">
+                          {/* Seletor de Lote */}
+                          <div>
+                            <Label htmlFor={`lote-${inscrito.id}`}>
+                              Lote
+                              <span className="text-red-500 ml-1">*</span>
+                            </Label>
+                            <Select 
+                              value={inscrito.batchId || ''} 
+                              onValueChange={(v) => {
+                                setInscritos(inscritos.map((i) => 
+                                  i.id === inscrito.id ? { ...i, batchId: v } : i
+                                ));
+                              }}
+                            >
+                              <SelectTrigger id={`lote-${inscrito.id}`}>
+                                <SelectValue placeholder="Selecione o lote" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {lotes.map((lote) => (
+                                  <SelectItem key={lote.id} value={lote.id}>
+                                    {lote.name} - R$ {Number(lote.price).toFixed(2)}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          
                           {camposInscrito.map((campo) => (
                             <div key={campo.id}>
                               <Label htmlFor={`${campo.fieldName}-${inscrito.id}`}>
@@ -696,7 +737,7 @@ export default function EventDetails() {
           )}
 
           {/* Botão de Envio */}
-          <Button type="submit" size="lg" className="w-full" disabled={submitting || !loteId}>
+          <Button type="submit" size="lg" className="w-full" disabled={submitting}>
             {submitting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
