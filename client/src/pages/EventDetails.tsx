@@ -261,7 +261,7 @@ export default function EventDetails() {
         },
       });
 
-      if (resultado.success) {
+      if (resultado.sucesso) {
         toast.success('Inscrição realizada com sucesso!');
         
         // Verificar tipo de pagamento

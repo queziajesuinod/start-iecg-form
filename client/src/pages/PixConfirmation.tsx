@@ -31,7 +31,8 @@ export default function PixConfirmation() {
 
     const checkStatus = async () => {
       try {
-        const response = await fetch(`http://localhost:3005/api/public/registrations/${orderCode}/status`);
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3005';
+        const response = await fetch(`${API_URL}/api/public/events/registrations/${orderCode}/status`);
         
         if (response.ok) {
           const data = await response.json();

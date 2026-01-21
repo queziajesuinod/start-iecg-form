@@ -51,7 +51,8 @@ export default function Ticket() {
   const loadRegistration = async (orderCode: string) => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:3005/api/public/registrations/${orderCode}`);
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3005';
+      const response = await fetch(`${API_URL}/api/public/events/registrations/${orderCode}`);
       
       if (!response.ok) {
         throw new Error('Inscrição não encontrada');
