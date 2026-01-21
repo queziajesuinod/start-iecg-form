@@ -17,7 +17,7 @@ function Router() {
     <Switch>
       <Route path={"/"} component={StartForm} />
       <Route path={"/eventos"} component={EventList} />
-      <Route path={"eventos/:id"} component={EventDetails} />
+      <Route path={"/eventos/:id"} component={EventDetails} />
       <Route path={"/inscricao/:orderCode"} component={RegistrationSuccess} />
       <Route path={"/celulas/atualizar"} component={AtualizarCelula} />
       <Route path={"/links"} component={Links} />

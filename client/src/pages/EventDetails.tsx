@@ -24,7 +24,7 @@ import {
 } from '@/lib/eventsApi';
 
 export default function EventDetails() {
-  const [, params] = useRoute('/evento/:id');
+  const [, params] = useRoute('/eventos/:id');
   const [, navigate] = useNavigate();
   const eventId = Number(params?.id);
 
