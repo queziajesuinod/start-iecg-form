@@ -10,6 +10,8 @@ import StartForm from "./pages/StartForm";
 import EventList from "./pages/EventList";
 import EventDetails from "./pages/EventDetails";
 import RegistrationConfirmation from "./pages/RegistrationConfirmation";
+import PixConfirmation from "./pages/PixConfirmation";
+import Ticket from "./pages/Ticket";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -19,6 +21,8 @@ function Router() {
       <Route path={"/eventos"} component={EventList} />
       <Route path={"/eventos/:id"} component={EventDetails} />
       <Route path={"/inscricao/:orderCode"} component={RegistrationConfirmation} />
+      <Route path={"/pix-confirmacao"} component={PixConfirmation} />
+      <Route path={"/ticket/:orderCode"} component={Ticket} />
       <Route path={"/celulas/atualizar"} component={AtualizarCelula} />
       <Route path={"/links"} component={Links} />
       <Route path={"/404"} component={NotFound} />

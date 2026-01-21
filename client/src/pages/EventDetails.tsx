@@ -263,7 +263,19 @@ export default function EventDetails() {
 
       if (resultado.success) {
         toast.success('Inscrição realizada com sucesso!');
-        setLocation(`/inscricao/${resultado.orderCode}`);
+        
+        // Verificar tipo de pagamento
+        const formaPagamentoSelecionada = formasPagamento.find(f => f.id === formaPagamento);
+        
+        if (formaPagamentoSelecionada?.paymentType === 'pix') {
+          // Redirecionar para página de confirmação PIX
+          const pixCode = resultado.registration?.pixQrCode || '';
+          const qrCode = resultado.registration?.pixQrCodeBase64 || '';
+          setLocation(`/pix-confirmacao?orderCode=${resultado.orderCode}&pixCode=${encodeURIComponent(pixCode)}&qrCode=${encodeURIComponent(qrCode)}`);
+        } else {
+          // Para cartão, redirecionar direto para o ticket
+          setLocation(`/ticket/${resultado.orderCode}`);
+        }
       }
     } catch (error: any) {
       console.error('Erro ao processar inscrição:', error);
