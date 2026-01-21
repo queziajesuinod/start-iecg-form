@@ -266,6 +266,8 @@ export default function EventDetails() {
         
         // Verificar tipo de pagamento
         const formaPagamentoSelecionada = formasPagamento.find(f => f.id === formaPagamento);
+        console.log('Forma de pagamento selecionada:', formaPagamentoSelecionada);
+        console.log('Resultado completo:', resultado);
         
         if (formaPagamentoSelecionada?.paymentType === 'pix') {
           // Redirecionar para página de confirmação PIX
