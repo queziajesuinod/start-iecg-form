@@ -39,15 +39,6 @@ export default function Ticket() {
   const [registration, setRegistration] = useState<Registration | null>(null);
   const [qrCodeUrl, setQrCodeUrl] = useState('');
 
-  useEffect(() => {
-    if (!match || !params?.orderCode) {
-      navigate('/');
-      return;
-    }
-
-    loadRegistration(params.orderCode);
-  }, [match, params?.orderCode, navigate, loadRegistration]);
-
   const loadRegistration = useCallback(async (orderCode: string) => {
     try {
       setLoading(true);
@@ -82,6 +73,15 @@ export default function Ticket() {
       setLoading(false);
     }
   }, [navigate, toast]);
+
+  useEffect(() => {
+    if (!match || !params?.orderCode) {
+      navigate('/');
+      return;
+    }
+
+    loadRegistration(params.orderCode);
+  }, [match, params?.orderCode, navigate, loadRegistration]);
 
   const downloadTicket = () => {
     // TODO: Implementar download do ticket em PDF
