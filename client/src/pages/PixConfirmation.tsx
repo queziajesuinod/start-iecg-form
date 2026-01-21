@@ -25,6 +25,43 @@ export default function PixConfirmation() {
     }
   }, [orderCode, pixCode, navigate]);
 
+  // Polling automático a cada 10 segundos
+  useEffect(() => {
+    if (!orderCode) return;
+
+    const checkStatus = async () => {
+      try {
+        const response = await fetch(`http://localhost:3005/api/public/registrations/${orderCode}/status`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          
+          if (data.isPaid) {
+            toast({
+              title: 'Pagamento confirmado!',
+              description: 'Redirecionando para o seu ticket...',
+            });
+            setTimeout(() => {
+              navigate(`/ticket/${orderCode}`);
+            }, 1500);
+          }
+        }
+      } catch (error) {
+        // Silenciar erros de polling para não incomodar o usuário
+        console.error('Erro no polling:', error);
+      }
+    };
+
+    // Verificar imediatamente
+    checkStatus();
+
+    // Configurar polling a cada 10 segundos
+    const intervalId = setInterval(checkStatus, 10000);
+
+    // Limpar intervalo ao desmontar componente
+    return () => clearInterval(intervalId);
+  }, [orderCode, navigate, toast]);
+
   const copyToClipboard = async () => {
     if (!pixCode) return;
     
