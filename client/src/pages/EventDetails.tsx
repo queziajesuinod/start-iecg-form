@@ -10,7 +10,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Calendar, MapPin, Users, Tag, Loader2, ArrowLeft, CreditCard } from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Calendar, MapPin, Users, Tag, Loader2, ArrowLeft, CreditCard, Plus, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   buscarEventoPublico,
@@ -41,12 +42,15 @@ export default function EventDetails() {
 
   // Estado do formulário
   const [loteId, setLoteId] = useState<number | null>(null);
-  const [quantidade, setQuantidade] = useState(1);
   const [cupomCodigo, setCupomCodigo] = useState('');
   const [cupomValido, setCupomValido] = useState<any>(null);
   const [validandoCupom, setValidandoCupom] = useState(false);
   const [dadosComprador, setDadosComprador] = useState<Record<string, any>>({});
-  const [dadosInscritos, setDadosInscritos] = useState<Record<string, any>[]>([{}]);
+  const [inscritos, setInscritos] = useState<Array<{
+    dados: Record<string, any>;
+    salvo: boolean;
+    id: string;
+  }>>([{ dados: {}, salvo: false, id: '1' }]);
   const [formaPagamento, setFormaPagamento] = useState<string>(''); // ID da forma de pagamento
   const [parcelas, setParcelas] = useState(1);
   const [dadosPagamento, setDadosPagamento] = useState({
@@ -60,10 +64,48 @@ export default function EventDetails() {
     carregarDados();
   }, [eventId]);
 
-  useEffect(() => {
-    // Ajustar array de inscritos quando quantidade mudar
-    setDadosInscritos(Array.from({ length: quantidade }, (_, i) => dadosInscritos[i] || {}));
-  }, [quantidade]);
+  const adicionarInscrito = () => {
+    const limite = evento?.maxPerBuyer || 10;
+    if (inscritos.length >= limite) {
+      toast.error(`Máximo de ${limite} inscrição(ões) por comprador`);
+      return;
+    }
+    setInscritos([...inscritos, { dados: {}, salvo: false, id: Date.now().toString() }]);
+  };
+
+  const removerInscrito = (id: string) => {
+    if (inscritos.length === 1) {
+      toast.error('É necessário pelo menos 1 inscrito');
+      return;
+    }
+    setInscritos(inscritos.filter((i) => i.id !== id));
+  };
+
+  const salvarInscrito = (id: string) => {
+    const inscrito = inscritos.find((i) => i.id === id);
+    if (!inscrito) return;
+
+    // Validar campos obrigatórios
+    const camposInscrito = campos.filter((c) => c.section === 'attendee');
+    for (const campo of camposInscrito) {
+      if (campo.isRequired && !inscrito.dados[campo.fieldName]) {
+        toast.error(`Campo obrigatório: ${campo.label}`);
+        return;
+      }
+    }
+
+    // Marcar como salvo
+    setInscritos(inscritos.map((i) => (i.id === id ? { ...i, salvo: true } : i)));
+    toast.success('Inscrito salvo!');
+  };
+
+  const atualizarDadosInscrito = (id: string, campo: string, valor: any) => {
+    setInscritos(
+      inscritos.map((i) =>
+        i.id === id ? { ...i, dados: { ...i.dados, [campo]: valor }, salvo: false } : i
+      )
+    );
+  };
 
   const carregarDados = async () => {
     try {
@@ -110,7 +152,7 @@ export default function EventDetails() {
     const lote = lotes.find((l) => l.id === loteId);
     if (!lote) return 0;
 
-    let total = Number(lote.price) * quantidade;
+    let total = Number(lote.price) * inscritos.length;
 
     if (cupomValido) {
       if (cupomValido.discountType === 'percentage') {
@@ -153,15 +195,11 @@ export default function EventDetails() {
       }
     }
 
-    // Validar campos dos inscritos
-    const camposInscrito = campos.filter((c) => c.section === 'attendee');
-    for (let i = 0; i < quantidade; i++) {
-      for (const campo of camposInscrito) {
-        if (campo.isRequired && !dadosInscritos[i]?.[campo.fieldName]) {
-          toast.error(`Inscrito ${i + 1}: Campo obrigatório - ${campo.label}`);
-          return false;
-        }
-      }
+    // Validar se todos os inscritos foram salvos
+    const inscritosNaoSalvos = inscritos.filter((i) => !i.salvo);
+    if (inscritosNaoSalvos.length > 0) {
+      toast.error(`Existem ${inscritosNaoSalvos.length} inscrito(s) não salvo(s). Salve todos antes de continuar.`);
+      return false;
     }
 
     // Validar dados de pagamento
@@ -184,9 +222,9 @@ export default function EventDetails() {
       const resultado = await processarInscricao({
         eventId,
         batchId: loteId!,
-        quantity: quantidade,
+        quantity: inscritos.length,
         buyerData: dadosComprador,
-        attendeesData: dadosInscritos,
+        attendeesData: inscritos.map((i) => i.dados),
         couponCode: cupomValido ? cupomCodigo : undefined,
         paymentData: dadosPagamento,
       });
@@ -357,33 +395,14 @@ export default function EventDetails() {
                 </Select>
               </div>
 
-              <div>
-                <Label>Quantidade de Inscrições</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max={evento.maxPerBuyer || 10}
-                  value={quantidade}
-                  onChange={(e) => {
-                    const valor = Number(e.target.value);
-                    const limite = evento.maxPerBuyer || 10;
-                    
-                    // Não permitir valores maiores que o limite
-                    if (valor > limite) {
-                      toast.error(`Máximo de ${limite} inscrição(ões) por comprador`);
-                      setQuantidade(limite);
-                    } else if (valor < 1) {
-                      setQuantidade(1);
-                    } else {
-                      setQuantidade(valor);
-                    }
-                  }}
-                />
-                {evento.maxPerBuyer && (
-                  <p className="text-sm text-gray-500 mt-1">
-                    Máximo {evento.maxPerBuyer} inscrição(ões) por comprador
-                  </p>
-                )}
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <p className="text-sm text-blue-900">
+                  <strong>Quantidade de inscrições:</strong> {inscritos.length}
+                </p>
+                <p className="text-xs text-blue-700 mt-1">
+                  Use o botão "Adicionar Inscrito" na seção abaixo para adicionar mais inscrições
+                  {evento.maxPerBuyer && ` (máximo ${evento.maxPerBuyer})`}
+                </p>
               </div>
 
               {/* Cupom */}
@@ -418,12 +437,12 @@ export default function EventDetails() {
                 <div className="bg-gray-50 p-4 rounded-lg space-y-2">
                   <div className="flex justify-between">
                     <span>Subtotal:</span>
-                    <span>R$ {(Number(loteAtual.price) * quantidade).toFixed(2)}</span>
+                    <span>R$ {(Number(loteAtual.price) * inscritos.length).toFixed(2)}</span>
                   </div>
                   {cupomValido && (
                     <div className="flex justify-between text-green-600">
                       <span>Desconto:</span>
-                      <span>- R$ {((Number(loteAtual.price) * quantidade) - calcularValorTotal()).toFixed(2)}</span>
+                      <span>- R$ {((Number(loteAtual.price) * inscritos.length) - calcularValorTotal()).toFixed(2)}</span>
                     </div>
                   )}
                   <Separator />
@@ -459,28 +478,91 @@ export default function EventDetails() {
           )}
 
           {/* Dados dos Inscritos */}
-          {camposInscrito.length > 0 && dadosInscritos.map((_, index) => (
-            <Card key={index}>
+          {camposInscrito.length > 0 && (
+            <Card>
               <CardHeader>
-                <CardTitle>Dados do Inscrito {index + 1}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {camposInscrito.map((campo) => (
-                  <div key={campo.id}>
-                    <Label htmlFor={`${campo.fieldName}-${index}`}>
-                      {campo.label}
-                      {campo.isRequired && <span className="text-red-500 ml-1">*</span>}
-                    </Label>
-                    {renderCampo(campo, dadosInscritos[index]?.[campo.fieldName], (value) => {
-                      const newDados = [...dadosInscritos];
-                      newDados[index] = { ...newDados[index], [campo.fieldName]: value };
-                      setDadosInscritos(newDados);
-                    })}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Dados dos Inscritos</CardTitle>
+                    <CardDescription>
+                      {inscritos.length} inscrito(s) - {inscritos.filter((i) => i.salvo).length} salvo(s)
+                    </CardDescription>
                   </div>
-                ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={adicionarInscrito}
+                    disabled={inscritos.length >= (evento?.maxPerBuyer || 10)}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Adicionar Inscrito
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Accordion type="single" collapsible className="w-full">
+                  {inscritos.map((inscrito, index) => (
+                    <AccordionItem key={inscrito.id} value={inscrito.id}>
+                      <AccordionTrigger className="hover:no-underline">
+                        <div className="flex items-center gap-2 w-full">
+                          <span className="font-medium">Inscrito {index + 1}</span>
+                          {inscrito.salvo ? (
+                            <Badge variant="secondary" className="ml-2">
+                              <Check className="h-3 w-3 mr-1" />
+                              Salvo
+                            </Badge>
+                          ) : (
+                            <Badge variant="destructive" className="ml-2">
+                              <X className="h-3 w-3 mr-1" />
+                              Não salvo
+                            </Badge>
+                          )}
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <div className="space-y-4 pt-4">
+                          {camposInscrito.map((campo) => (
+                            <div key={campo.id}>
+                              <Label htmlFor={`${campo.fieldName}-${inscrito.id}`}>
+                                {campo.label}
+                                {campo.isRequired && <span className="text-red-500 ml-1">*</span>}
+                              </Label>
+                              {renderCampo(
+                                campo,
+                                inscrito.dados[campo.fieldName],
+                                (value) => atualizarDadosInscrito(inscrito.id, campo.fieldName, value)
+                              )}
+                            </div>
+                          ))}
+                          <div className="flex gap-2 pt-4">
+                            <Button
+                              type="button"
+                              onClick={() => salvarInscrito(inscrito.id)}
+                              disabled={inscrito.salvo}
+                            >
+                              <Check className="h-4 w-4 mr-2" />
+                              Salvar Inscrito
+                            </Button>
+                            {inscritos.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                onClick={() => removerInscrito(inscrito.id)}
+                              >
+                                <X className="h-4 w-4 mr-2" />
+                                Remover
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
               </CardContent>
             </Card>
-          ))}
+          )}
 
           {/* Forma de Pagamento */}
           {formasPagamento.length > 0 && (
