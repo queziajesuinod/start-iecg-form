@@ -7,12 +7,18 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import StartForm from "./pages/StartForm";
+import EventList from "./pages/EventList";
+import EventDetails from "./pages/EventDetails";
+import RegistrationSuccess from "./pages/RegistrationSuccess";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
-      <Route path={"/"} component={StartForm} />
+      <Route path={"/"} component={EventList} />
+      <Route path={"/evento/:id"} component={EventDetails} />
+      <Route path={"/inscricao/:orderCode"} component={RegistrationSuccess} />
+      <Route path={"/start"} component={StartForm} />
       <Route path={"/celulas/atualizar"} component={AtualizarCelula} />
       <Route path={"/links"} component={Links} />
       <Route path={"/404"} component={NotFound} />
