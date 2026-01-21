@@ -25,7 +25,7 @@ import {
   type FormField,
   type PaymentOption,
 } from '@/lib/eventsApi';
-import { maskCPForCNPJ, maskPhone, validateCPForCNPJ, validateEmail, removeNonDigits } from '@/lib/masks';
+import { maskCPForCNPJ, maskPhone, validateCPForCNPJ, validateEmail, removeNonDigits, maskCreditCard, maskCardExpiry, maskCVV } from '@/lib/masks';
 
 export default function EventDetails() {
   const [, setLocation] = useLocation();
@@ -732,7 +732,11 @@ export default function EventDetails() {
                       <Input
                         placeholder="0000 0000 0000 0000"
                         value={dadosPagamento.cardNumber}
-                        onChange={(e) => setDadosPagamento({ ...dadosPagamento, cardNumber: e.target.value })}
+                        onChange={(e) => {
+                          const masked = maskCreditCard(e.target.value);
+                          setDadosPagamento({ ...dadosPagamento, cardNumber: masked });
+                        }}
+                        maxLength={19}
                         required
                       />
                     </div>
@@ -747,11 +751,15 @@ export default function EventDetails() {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label>Validade (MM/AA)</Label>
+                        <Label>Validade (MM/AAAA)</Label>
                         <Input
-                          placeholder="12/28"
+                          placeholder="12/2030"
                           value={dadosPagamento.expirationDate}
-                          onChange={(e) => setDadosPagamento({ ...dadosPagamento, expirationDate: e.target.value })}
+                          onChange={(e) => {
+                            const masked = maskCardExpiry(e.target.value);
+                            setDadosPagamento({ ...dadosPagamento, expirationDate: masked });
+                          }}
+                          maxLength={7}
                           required
                         />
                       </div>
@@ -760,9 +768,12 @@ export default function EventDetails() {
                         <Input
                           placeholder="123"
                           type="password"
-                          maxLength={4}
                           value={dadosPagamento.securityCode}
-                          onChange={(e) => setDadosPagamento({ ...dadosPagamento, securityCode: e.target.value })}
+                          onChange={(e) => {
+                            const masked = maskCVV(e.target.value);
+                            setDadosPagamento({ ...dadosPagamento, securityCode: masked });
+                          }}
+                          maxLength={4}
                           required
                         />
                       </div>

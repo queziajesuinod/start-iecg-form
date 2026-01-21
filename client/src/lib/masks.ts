@@ -147,3 +147,33 @@ export function validateEmail(email: string): boolean {
   const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return regex.test(email);
 }
+
+/**
+ * Aplica máscara de cartão de crédito: 9999 9999 9999 9999
+ */
+export function maskCreditCard(value: string): string {
+  const digits = removeNonDigits(value);
+  
+  if (digits.length <= 4) return digits;
+  if (digits.length <= 8) return `${digits.slice(0, 4)} ${digits.slice(4)}`;
+  if (digits.length <= 12) return `${digits.slice(0, 4)} ${digits.slice(4, 8)} ${digits.slice(8)}`;
+  return `${digits.slice(0, 4)} ${digits.slice(4, 8)} ${digits.slice(8, 12)} ${digits.slice(12, 16)}`;
+}
+
+/**
+ * Aplica máscara de validade do cartão: MM/YYYY
+ */
+export function maskCardExpiry(value: string): string {
+  const digits = removeNonDigits(value);
+  
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 6)}`;
+}
+
+/**
+ * Aplica máscara de CVV: 999 ou 9999
+ */
+export function maskCVV(value: string): string {
+  const digits = removeNonDigits(value);
+  return digits.slice(0, 4);
+}
