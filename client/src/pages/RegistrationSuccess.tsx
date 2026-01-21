@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useRoute, useNavigate } from 'wouter';
+import { useRoute, useLocation } from 'wouter';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +10,7 @@ import { consultarInscricao } from '@/lib/eventsApi';
 
 export default function RegistrationSuccess() {
   const [, params] = useRoute('/inscricao/:orderCode');
-  const [, navigate] = useNavigate();
+  const [, setLocation] = useLocation();
   const orderCode = params?.orderCode;
 
   const [inscricao, setInscricao] = useState<any>(null);
@@ -82,7 +82,7 @@ export default function RegistrationSuccess() {
             <p>Não foi possível encontrar a inscrição com o código fornecido.</p>
           </CardContent>
           <CardFooter>
-            <Button onClick={() => navigate('/')} className="w-full">
+            <Button onClick={() => setLocation('/')} className="w-full">
               <Home className="h-4 w-4 mr-2" />
               Voltar para Eventos
             </Button>
@@ -224,7 +224,7 @@ export default function RegistrationSuccess() {
           </CardContent>
 
           <CardFooter className="flex gap-3">
-            <Button variant="outline" onClick={() => navigate('/')} className="flex-1">
+            <Button variant="outline" onClick={() => setLocation('/')} className="flex-1">
               <Home className="h-4 w-4 mr-2" />
               Voltar para Eventos
             </Button>

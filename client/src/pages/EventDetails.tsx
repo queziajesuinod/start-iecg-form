@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useRoute, useNavigate } from 'wouter';
+import { useRoute, useLocation } from 'wouter';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -170,7 +170,7 @@ export default function EventDetails() {
 
       if (resultado.success) {
         toast.success('Inscrição realizada com sucesso!');
-        navigate(`/inscricao/${resultado.orderCode}`);
+        setLocation(`/inscricao/${resultado.orderCode}`);
       }
     } catch (error: any) {
       console.error('Erro ao processar inscrição:', error);
@@ -286,7 +286,7 @@ export default function EventDetails() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
       <div className="container max-w-4xl mx-auto">
-        <Button variant="ghost" onClick={() => navigate('/')} className="mb-6">
+        <Button variant="ghost" onClick={() => setLocation('/')} className="mb-6">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Voltar
         </Button>
