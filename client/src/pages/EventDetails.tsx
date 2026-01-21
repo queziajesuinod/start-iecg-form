@@ -24,15 +24,16 @@ import {
 } from '@/lib/eventsApi';
 
 export default function EventDetails() {
-  const [match, params] = useRoute('/eventos/:id');
   const [, setLocation] = useLocation();
   
-  console.log('useRoute match:', match);
-  console.log('useRoute params:', params);
-  console.log('window.location.pathname:', window.location.pathname);
+  // Extrair ID da URL diretamente
+  const pathParts = window.location.pathname.split('/');
+  const id = pathParts[pathParts.length - 1];
+  const eventId = Number(id);
   
-  const eventId = Number(params?.id);
-  console.log('eventId:', eventId);
+  console.log('URL path:', window.location.pathname);
+  console.log('Extracted id:', id);
+  console.log('eventId (Number):', eventId);
 
   const [evento, setEvento] = useState<Event | null>(null);
   const [lotes, setLotes] = useState<EventBatch[]>([]);
