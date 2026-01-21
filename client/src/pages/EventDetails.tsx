@@ -164,7 +164,7 @@ export default function EventDetails() {
 
     // Aplicar juros se houver parcelas
     if (formaPagamento && parcelas > 1) {
-      const pagamento = formasPagamento.find((f) => f.id.toString() === formaPagamento);
+      const pagamento = formasPagamento.find((f) => f.id === formaPagamento);
       if (pagamento && pagamento.interestRate > 0) {
         if (pagamento.interestType === 'percentage') {
           // Juros percentual por parcela
@@ -202,11 +202,20 @@ export default function EventDetails() {
       return false;
     }
 
-    // Validar dados de pagamento
-    if (!dadosPagamento.cardNumber || !dadosPagamento.cardHolder || 
-        !dadosPagamento.expirationDate || !dadosPagamento.securityCode) {
-      toast.error('Preencha todos os dados do cartão');
+    // Validar forma de pagamento selecionada
+    if (!formaPagamento) {
+      toast.error('Selecione uma forma de pagamento');
       return false;
+    }
+
+    // Validar dados de pagamento apenas para cartão de crédito
+    const formaSelecionada = formasPagamento.find((f) => f.id === formaPagamento);
+    if (formaSelecionada?.paymentType === 'credit_card') {
+      if (!dadosPagamento.cardNumber || !dadosPagamento.cardHolder || 
+          !dadosPagamento.expirationDate || !dadosPagamento.securityCode) {
+        toast.error('Preencha todos os dados do cartão');
+        return false;
+      }
     }
 
     return true;
@@ -598,7 +607,7 @@ export default function EventDetails() {
                 </div>
                 
                 {/* Parcelas (apenas para cartão) */}
-                {formaPagamento && formasPagamento.find((f) => f.id.toString() === formaPagamento)?.paymentType === 'credit_card' && (
+                {formaPagamento && formasPagamento.find((f) => f.id === formaPagamento)?.paymentType === 'credit_card' && (
                   <div>
                     <Label>Número de Parcelas</Label>
                     <Select value={parcelas.toString()} onValueChange={(v) => setParcelas(parseInt(v))}>
@@ -607,10 +616,10 @@ export default function EventDetails() {
                       </SelectTrigger>
                       <SelectContent>
                         {Array.from(
-                          { length: formasPagamento.find((f) => f.id.toString() === formaPagamento)?.maxInstallments || 1 },
+                          { length: formasPagamento.find((f) => f.id === formaPagamento)?.maxInstallments || 1 },
                           (_, i) => i + 1
                         ).map((p) => {
-                          const pagamento = formasPagamento.find((f) => f.id.toString() === formaPagamento);
+                          const pagamento = formasPagamento.find((f) => f.id === formaPagamento);
                           const valorParcela = calcularValorTotal() / p;
                           const semJuros = !pagamento || pagamento.interestRate === 0 || p === 1;
                           return (
@@ -626,7 +635,7 @@ export default function EventDetails() {
                 )}
                 
                 {/* Dados do Cartão (apenas para cartão) */}
-                {formaPagamento && formasPagamento.find((f) => f.id.toString() === formaPagamento)?.paymentType === 'credit_card' && (
+                {formaPagamento && formasPagamento.find((f) => f.id === formaPagamento)?.paymentType === 'credit_card' && (
                   <div className="space-y-4 pt-4 border-t">
                     <h4 className="font-medium">Dados do Cartão</h4>
                     <div>
@@ -673,10 +682,10 @@ export default function EventDetails() {
                 )}
                 
                 {/* Mensagem para PIX/Boleto */}
-                {formaPagamento && ['pix', 'boleto'].includes(formasPagamento.find((f) => f.id.toString() === formaPagamento)?.paymentType || '') && (
+                {formaPagamento && ['pix', 'boleto'].includes(formasPagamento.find((f) => f.id === formaPagamento)?.paymentType || '') && (
                   <div className="p-4 bg-blue-50 rounded-lg">
                     <p className="text-sm text-blue-900">
-                      {formasPagamento.find((f) => f.id.toString() === formaPagamento)?.paymentType === 'pix'
+                      {formasPagamento.find((f) => f.id === formaPagamento)?.paymentType === 'pix'
                         ? 'Após finalizar a inscrição, você receberá o QR Code do PIX para pagamento.'
                         : 'Após finalizar a inscrição, você receberá o boleto para pagamento.'}
                     </p>
