@@ -24,9 +24,15 @@ import {
 } from '@/lib/eventsApi';
 
 export default function EventDetails() {
-  const [, params] = useRoute('/eventos/:id');
+  const [match, params] = useRoute('/eventos/:id');
   const [, setLocation] = useLocation();
+  
+  console.log('useRoute match:', match);
+  console.log('useRoute params:', params);
+  console.log('window.location.pathname:', window.location.pathname);
+  
   const eventId = Number(params?.id);
+  console.log('eventId:', eventId);
 
   const [evento, setEvento] = useState<Event | null>(null);
   const [lotes, setLotes] = useState<EventBatch[]>([]);
