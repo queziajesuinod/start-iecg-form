@@ -48,6 +48,16 @@ export interface FormField {
   orderIndex: number;
 }
 
+export interface PaymentOption {
+  id: number;
+  eventId: string;
+  paymentType: 'credit_card' | 'pix' | 'boleto';
+  maxInstallments: number;
+  interestRate: number;
+  interestType: 'percentage' | 'fixed';
+  isActive: boolean;
+}
+
 export interface CouponValidation {
   valid: boolean;
   coupon?: {
@@ -145,6 +155,12 @@ export const processarInscricao = async (
 // Consultar inscrição por código
 export const consultarInscricao = async (orderCode: string) => {
   const response = await api.get(`/api/public/events/registrations/${orderCode}`);
+  return response.data;
+};
+
+// Buscar formas de pagamento do evento
+export const buscarFormasPagamento = async (eventId: string): Promise<PaymentOption[]> => {
+  const response = await api.get(`/api/public/events/${eventId}/payment-options`);
   return response.data;
 };
 

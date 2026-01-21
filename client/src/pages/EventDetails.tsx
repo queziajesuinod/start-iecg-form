@@ -18,9 +18,11 @@ import {
   listarCamposFormulario,
   validarCupom,
   processarInscricao,
+  buscarFormasPagamento,
   type Event,
   type EventBatch,
   type FormField,
+  type PaymentOption,
 } from '@/lib/eventsApi';
 
 export default function EventDetails() {
@@ -33,6 +35,7 @@ export default function EventDetails() {
   const [evento, setEvento] = useState<Event | null>(null);
   const [lotes, setLotes] = useState<EventBatch[]>([]);
   const [campos, setCampos] = useState<FormField[]>([]);
+  const [formasPagamento, setFormasPagamento] = useState<PaymentOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -44,6 +47,8 @@ export default function EventDetails() {
   const [validandoCupom, setValidandoCupom] = useState(false);
   const [dadosComprador, setDadosComprador] = useState<Record<string, any>>({});
   const [dadosInscritos, setDadosInscritos] = useState<Record<string, any>[]>([{}]);
+  const [formaPagamento, setFormaPagamento] = useState<string>(''); // ID da forma de pagamento
+  const [parcelas, setParcelas] = useState(1);
   const [dadosPagamento, setDadosPagamento] = useState({
     cardNumber: '',
     cardHolder: '',
@@ -63,14 +68,16 @@ export default function EventDetails() {
   const carregarDados = async () => {
     try {
       setLoading(true);
-      const [eventoData, lotesData, camposData] = await Promise.all([
+      const [eventoData, lotesData, camposData, formasPagamentoData] = await Promise.all([
         buscarEventoPublico(eventId),
         listarLotesPublicos(eventId),
         listarCamposFormulario(eventId),
+        buscarFormasPagamento(eventId),
       ]);
       setEvento(eventoData);
       setLotes(lotesData.filter((l) => l.isActive));
       setCampos(camposData);
+      setFormasPagamento(formasPagamentoData.filter((f) => f.isActive));
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
       toast.error('Erro ao carregar evento');
@@ -110,6 +117,20 @@ export default function EventDetails() {
         total -= total * (Number(cupomValido.discountValue) / 100);
       } else {
         total -= Number(cupomValido.discountValue);
+      }
+    }
+
+    // Aplicar juros se houver parcelas
+    if (formaPagamento && parcelas > 1) {
+      const pagamento = formasPagamento.find((f) => f.id.toString() === formaPagamento);
+      if (pagamento && pagamento.interestRate > 0) {
+        if (pagamento.interestType === 'percentage') {
+          // Juros percentual por parcela
+          total += total * (Number(pagamento.interestRate) / 100) * (parcelas - 1);
+        } else {
+          // Juros fixo por parcela
+          total += Number(pagamento.interestRate) * (parcelas - 1);
+        }
       }
     }
 
@@ -461,57 +482,123 @@ export default function EventDetails() {
             </Card>
           ))}
 
-          {/* Dados de Pagamento */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5" />
-                Dados do Cartão de Crédito
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>Número do Cartão</Label>
-                <Input
-                  placeholder="0000 0000 0000 0000"
-                  value={dadosPagamento.cardNumber}
-                  onChange={(e) => setDadosPagamento({ ...dadosPagamento, cardNumber: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label>Nome no Cartão</Label>
-                <Input
-                  placeholder="NOME COMPLETO"
-                  value={dadosPagamento.cardHolder}
-                  onChange={(e) => setDadosPagamento({ ...dadosPagamento, cardHolder: e.target.value.toUpperCase() })}
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+          {/* Forma de Pagamento */}
+          {formasPagamento.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CreditCard className="h-5 w-5" />
+                  Forma de Pagamento
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <div>
-                  <Label>Validade (MM/AA)</Label>
-                  <Input
-                    placeholder="12/28"
-                    value={dadosPagamento.expirationDate}
-                    onChange={(e) => setDadosPagamento({ ...dadosPagamento, expirationDate: e.target.value })}
-                    required
-                  />
+                  <Label>Selecione a forma de pagamento</Label>
+                  <Select value={formaPagamento} onValueChange={setFormaPagamento}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Escolha uma opção" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {formasPagamento.map((forma) => (
+                        <SelectItem key={forma.id} value={forma.id.toString()}>
+                          {forma.paymentType === 'credit_card' && 'Cartão de Crédito'}
+                          {forma.paymentType === 'pix' && 'PIX'}
+                          {forma.paymentType === 'boleto' && 'Boleto'}
+                          {forma.paymentType === 'credit_card' && forma.maxInstallments > 1 && ` (até ${forma.maxInstallments}x)`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div>
-                  <Label>CVV</Label>
-                  <Input
-                    placeholder="123"
-                    type="password"
-                    maxLength={4}
-                    value={dadosPagamento.securityCode}
-                    onChange={(e) => setDadosPagamento({ ...dadosPagamento, securityCode: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                
+                {/* Parcelas (apenas para cartão) */}
+                {formaPagamento && formasPagamento.find((f) => f.id.toString() === formaPagamento)?.paymentType === 'credit_card' && (
+                  <div>
+                    <Label>Número de Parcelas</Label>
+                    <Select value={parcelas.toString()} onValueChange={(v) => setParcelas(parseInt(v))}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from(
+                          { length: formasPagamento.find((f) => f.id.toString() === formaPagamento)?.maxInstallments || 1 },
+                          (_, i) => i + 1
+                        ).map((p) => {
+                          const pagamento = formasPagamento.find((f) => f.id.toString() === formaPagamento);
+                          const valorParcela = calcularValorTotal() / p;
+                          const semJuros = !pagamento || pagamento.interestRate === 0 || p === 1;
+                          return (
+                            <SelectItem key={p} value={p.toString()}>
+                              {p}x de R$ {valorParcela.toFixed(2)}
+                              {semJuros ? ' sem juros' : ` (${pagamento.interestRate}% ${pagamento.interestType === 'percentage' ? 'a.m.' : 'fixo'})`}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                
+                {/* Dados do Cartão (apenas para cartão) */}
+                {formaPagamento && formasPagamento.find((f) => f.id.toString() === formaPagamento)?.paymentType === 'credit_card' && (
+                  <div className="space-y-4 pt-4 border-t">
+                    <h4 className="font-medium">Dados do Cartão</h4>
+                    <div>
+                      <Label>Número do Cartão</Label>
+                      <Input
+                        placeholder="0000 0000 0000 0000"
+                        value={dadosPagamento.cardNumber}
+                        onChange={(e) => setDadosPagamento({ ...dadosPagamento, cardNumber: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label>Nome no Cartão</Label>
+                      <Input
+                        placeholder="NOME COMPLETO"
+                        value={dadosPagamento.cardHolder}
+                        onChange={(e) => setDadosPagamento({ ...dadosPagamento, cardHolder: e.target.value.toUpperCase() })}
+                        required
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Validade (MM/AA)</Label>
+                        <Input
+                          placeholder="12/28"
+                          value={dadosPagamento.expirationDate}
+                          onChange={(e) => setDadosPagamento({ ...dadosPagamento, expirationDate: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <Label>CVV</Label>
+                        <Input
+                          placeholder="123"
+                          type="password"
+                          maxLength={4}
+                          value={dadosPagamento.securityCode}
+                          onChange={(e) => setDadosPagamento({ ...dadosPagamento, securityCode: e.target.value })}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Mensagem para PIX/Boleto */}
+                {formaPagamento && ['pix', 'boleto'].includes(formasPagamento.find((f) => f.id.toString() === formaPagamento)?.paymentType || '') && (
+                  <div className="p-4 bg-blue-50 rounded-lg">
+                    <p className="text-sm text-blue-900">
+                      {formasPagamento.find((f) => f.id.toString() === formaPagamento)?.paymentType === 'pix'
+                        ? 'Após finalizar a inscrição, você receberá o QR Code do PIX para pagamento.'
+                        : 'Após finalizar a inscrição, você receberá o boleto para pagamento.'}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Botão de Envio */}
           <Button type="submit" size="lg" className="w-full" disabled={submitting || !loteId}>
