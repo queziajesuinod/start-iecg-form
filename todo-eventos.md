@@ -56,3 +56,5 @@
 
 - [x] Corrigir import useNavigate (wouter usa useLocation)
 - [x] Configurar .env com OAUTH_SERVER_URL
+
+- [x] Restaurar StartForm como página inicial (/) e mover EventList para /eventos

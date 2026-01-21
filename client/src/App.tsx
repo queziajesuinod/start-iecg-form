@@ -15,10 +15,10 @@ function Router() {
   // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
-      <Route path={"/"} component={EventList} />
-      <Route path={"/evento/:id"} component={EventDetails} />
+      <Route path={"/"} component={StartForm} />
+      <Route path={"/eventos"} component={EventList} />
+      <Route path={"eventos/:id"} component={EventDetails} />
       <Route path={"/inscricao/:orderCode"} component={RegistrationSuccess} />
-      <Route path={"/start"} component={StartForm} />
       <Route path={"/celulas/atualizar"} component={AtualizarCelula} />
       <Route path={"/links"} component={Links} />
       <Route path={"/404"} component={NotFound} />

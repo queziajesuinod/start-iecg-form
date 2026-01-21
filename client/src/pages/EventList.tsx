@@ -160,7 +160,7 @@ export default function EventList() {
 
                   <CardFooter>
                     <Button
-                      onClick={() => setLocation(`/evento/${evento.id}`)}
+                      onClick={() => setLocation(`/eventos/${evento.id}`)}
                       disabled={esgotado}
                       className="w-full"
                     >
