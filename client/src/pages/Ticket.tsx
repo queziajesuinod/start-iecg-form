@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -46,9 +46,9 @@ export default function Ticket() {
     }
 
     loadRegistration(params.orderCode);
-  }, [match, params]);
+  }, [match, params?.orderCode, navigate, loadRegistration]);
 
-  const loadRegistration = async (orderCode: string) => {
+  const loadRegistration = useCallback(async (orderCode: string) => {
     try {
       setLoading(true);
       const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3005';
@@ -81,7 +81,7 @@ export default function Ticket() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [navigate, toast]);
 
   const downloadTicket = () => {
     // TODO: Implementar download do ticket em PDF
