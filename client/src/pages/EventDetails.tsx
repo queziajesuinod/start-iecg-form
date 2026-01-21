@@ -269,8 +269,8 @@ export default function EventDetails() {
         
         if (formaPagamentoSelecionada?.paymentType === 'pix') {
           // Redirecionar para página de confirmação PIX
-          const pixCode = resultado.registration?.pixQrCode || '';
-          const qrCode = resultado.registration?.pixQrCodeBase64 || '';
+          const pixCode = resultado.pagamento?.qrCodeString || '';
+          const qrCode = resultado.pagamento?.qrCodeBase64 || '';
           setLocation(`/pix-confirmacao?orderCode=${resultado.orderCode}&pixCode=${encodeURIComponent(pixCode)}&qrCode=${encodeURIComponent(qrCode)}`);
         } else {
           // Para cartão, redirecionar direto para o ticket
@@ -627,11 +627,23 @@ export default function EventDetails() {
                                 <SelectValue placeholder="Selecione o lote" />
                               </SelectTrigger>
                               <SelectContent>
-                                {lotes.map((lote) => (
-                                  <SelectItem key={lote.id} value={lote.id}>
-                                    {lote.name} - R$ {Number(lote.price).toFixed(2)}
-                                  </SelectItem>
-                                ))}
+                                {lotes.map((lote) => {
+                                  const esgotado = lote.vagasDisponiveis !== null && lote.vagasDisponiveis <= 0;
+                                  return (
+                                    <SelectItem 
+                                      key={lote.id} 
+                                      value={lote.id}
+                                      disabled={esgotado}
+                                    >
+                                      {lote.name} - R$ {Number(lote.price).toFixed(2)}
+                                      {lote.vagasDisponiveis !== null && (
+                                        <span className="ml-2 text-xs">
+                                          {esgotado ? '(Esgotado)' : `(${lote.vagasDisponiveis} vagas)`}
+                                        </span>
+                                      )}
+                                    </SelectItem>
+                                  );
+                                })}
                               </SelectContent>
                             </Select>
                           </div>

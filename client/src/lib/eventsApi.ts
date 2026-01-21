@@ -33,6 +33,8 @@ export interface EventBatch {
   maxQuantity?: number;
   currentQuantity: number;
   isActive: boolean;
+  vagasDisponiveis?: number | null;
+  inscritosOcupados?: number;
 }
 
 export interface FormField {
