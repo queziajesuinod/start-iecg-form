@@ -25,7 +25,7 @@ import {
 
 export default function EventDetails() {
   const [, params] = useRoute('/eventos/:id');
-  const [, navigate] = useNavigate();
+  const [, setLocation] = useLocation();
   const eventId = Number(params?.id);
 
   const [evento, setEvento] = useState<Event | null>(null);
