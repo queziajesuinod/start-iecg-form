@@ -6,6 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { Calendar, MapPin, Users, Download, Loader2, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import QRCode from 'qrcode';
+import jsPDF from 'jspdf';
 
 interface Registration {
   id: string;
@@ -83,12 +84,96 @@ export default function Ticket() {
     loadRegistration(params.orderCode);
   }, [match, params?.orderCode, navigate, loadRegistration]);
 
-  const downloadTicket = () => {
-    // TODO: Implementar download do ticket em PDF
-    toast({
-      title: 'Em breve',
-      description: 'A funcionalidade de download estará disponível em breve',
-    });
+  const downloadTicket = async () => {
+    if (!registration || !qrCodeUrl) return;
+
+    try {
+      const pdf = new jsPDF();
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      
+      // Título
+      pdf.setFontSize(20);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Ticket de Inscrição', pageWidth / 2, 20, { align: 'center' });
+      
+      // Código da inscrição
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`Código: ${registration.orderCode}`, pageWidth / 2, 30, { align: 'center' });
+      
+      // Linha separadora
+      pdf.setLineWidth(0.5);
+      pdf.line(20, 35, pageWidth - 20, 35);
+      
+      // Informações do evento
+      pdf.setFontSize(16);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Evento', 20, 45);
+      
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(registration.event.name, 20, 55);
+      
+      const eventDate = new Date(registration.event.eventDate).toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      pdf.text(`Data: ${eventDate}`, 20, 65);
+      pdf.text(`Local: ${registration.event.location}`, 20, 75);
+      
+      // QR Code
+      pdf.addImage(qrCodeUrl, 'PNG', pageWidth / 2 - 40, 85, 80, 80);
+      
+      pdf.setFontSize(10);
+      pdf.text('Apresente este QR Code na entrada do evento', pageWidth / 2, 175, { align: 'center' });
+      
+      // Inscritos
+      let yPos = 190;
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Inscritos', 20, yPos);
+      
+      yPos += 10;
+      pdf.setFontSize(11);
+      pdf.setFont('helvetica', 'normal');
+      
+      registration.attendees.forEach((attendee, index) => {
+        const nome = attendee.attendeeData.nome_do_inscrito || attendee.attendeeData.nome || `Inscrito ${index + 1}`;
+        pdf.text(`• ${nome} - ${attendee.batch.name}`, 25, yPos);
+        yPos += 8;
+      });
+      
+      // Total
+      yPos += 5;
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(`Total Pago: R$ ${Number(registration.finalPrice).toFixed(2).replace('.', ',')}`, 20, yPos);
+      
+      // Status do pagamento
+      yPos += 10;
+      const isPaid = registration.paymentStatus === 'confirmed' || registration.paymentStatus === 'paid';
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`Status: ${isPaid ? 'Pagamento Confirmado' : 'Aguardando Pagamento'}`, 20, yPos);
+      
+      // Salvar PDF
+      pdf.save(`ticket-${registration.orderCode}.pdf`);
+      
+      toast({
+        title: 'Sucesso!',
+        description: 'Ticket baixado com sucesso',
+      });
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível gerar o PDF',
+        variant: 'destructive',
+      });
+    }
   };
 
   if (loading) {
