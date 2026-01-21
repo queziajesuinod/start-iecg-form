@@ -266,14 +266,26 @@ export default function EventDetails() {
         
         // Verificar tipo de pagamento
         const formaPagamentoSelecionada = formasPagamento.find(f => f.id === formaPagamento);
+        console.log('=== DEBUG REDIRECIONAMENTO ==>');
+        console.log('formaPagamento (ID selecionado):', formaPagamento);
+        console.log('formasPagamento (array completo):', formasPagamento);
+        console.log('formaPagamentoSelecionada:', formaPagamentoSelecionada);
+        console.log('paymentType:', formaPagamentoSelecionada?.paymentType);
+        console.log('resultado.pagamento:', resultado.pagamento);
+        console.log('qrCodeString:', resultado.pagamento?.qrCodeString);
+        console.log('qrCodeBase64:', resultado.pagamento?.qrCodeBase64);
         
         if (formaPagamentoSelecionada?.paymentType === 'pix') {
+          console.log('ENTRANDO NO IF DO PIX');
           // Redirecionar para página de confirmação PIX
           const pixCode = resultado.pagamento?.qrCodeString || '';
           const qrCode = resultado.pagamento?.qrCodeBase64 || '';
+          console.log('Redirecionando para:', `/pix-confirmacao?orderCode=${resultado.orderCode}`);
           setLocation(`/pix-confirmacao?orderCode=${resultado.orderCode}&pixCode=${encodeURIComponent(pixCode)}&qrCode=${encodeURIComponent(qrCode)}`);
         } else {
+          console.log('ENTRANDO NO ELSE (CARTÃO)');
           // Para cartão, redirecionar direto para o ticket
+          console.log('Redirecionando para:', `/ticket/${resultado.orderCode}`);
           setLocation(`/ticket/${resultado.orderCode}`);
         }
       }
