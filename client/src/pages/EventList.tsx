@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'wouter';
+import { useLocation } from 'wouter';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,7 +7,7 @@ import { Calendar, MapPin, Users, Loader2 } from 'lucide-react';
 import { listarEventosPublicos, type Event } from '@/lib/eventsApi';
 
 export default function EventList() {
-  const [, navigate] = useNavigate();
+  const [, setLocation] = useLocation();
   const [eventos, setEventos] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -160,7 +160,7 @@ export default function EventList() {
 
                   <CardFooter>
                     <Button
-                      onClick={() => navigate(`/evento/${evento.id}`)}
+                      onClick={() => setLocation(`/evento/${evento.id}`)}
                       disabled={esgotado}
                       className="w-full"
                     >

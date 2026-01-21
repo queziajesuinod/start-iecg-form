@@ -51,3 +51,8 @@
 - [ ] Configurar variáveis de ambiente
 - [ ] Build de produção
 - [ ] Deploy no servidor
+
+## Bugs a Corrigir
+
+- [x] Corrigir import useNavigate (wouter usa useLocation)
+- [x] Configurar .env com OAUTH_SERVER_URL
