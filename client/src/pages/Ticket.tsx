@@ -176,7 +176,7 @@ export default function Ticket() {
                         </p>
                       </div>
                       <p className="font-semibold">
-                        R$ {attendee.batch.price.toFixed(2).replace('.', ',')}
+                        R$ {Number(attendee.batch.price).toFixed(2).replace('.', ',')}
                       </p>
                     </div>
                   </div>
@@ -190,7 +190,7 @@ export default function Ticket() {
             <div className="flex justify-between items-center text-lg font-bold">
               <span>Total Pago</span>
               <span className="text-primary">
-                R$ {registration.finalPrice.toFixed(2).replace('.', ',')}
+                R$ {Number(registration.finalPrice).toFixed(2).replace('.', ',')}
               </span>
             </div>
 
