@@ -10,7 +10,7 @@ const api = axios.create({
 // ============= EVENTOS PÚBLICOS =============
 
 export interface Event {
-  id: number;
+  id: string;
   title: string;
   description: string;
   startDate: string;
@@ -24,7 +24,7 @@ export interface Event {
 
 export interface EventBatch {
   id: number;
-  eventId: number;
+  eventId: string;
   name: string;
   price: number;
   startDate: string;
@@ -36,7 +36,7 @@ export interface EventBatch {
 
 export interface FormField {
   id: number;
-  eventId: number;
+  eventId: string;
   section: 'buyer' | 'attendee';
   fieldName: string;
   fieldType: string;
@@ -58,7 +58,7 @@ export interface CouponValidation {
 }
 
 export interface RegistrationData {
-  eventId: number;
+  eventId: string;
   batchId: number;
   quantity: number;
   buyerData: Record<string, any>;
@@ -91,19 +91,19 @@ export const listarEventosPublicos = async (): Promise<Event[]> => {
 };
 
 // Buscar detalhes de um evento
-export const buscarEventoPublico = async (id: number): Promise<Event> => {
+export const buscarEventoPublico = async (id: string): Promise<Event> => {
   const response = await api.get(`/api/public/events/${id}`);
   return response.data;
 };
 
 // Listar lotes de um evento
-export const listarLotesPublicos = async (eventId: number): Promise<EventBatch[]> => {
+export const listarLotesPublicos = async (eventId: string): Promise<EventBatch[]> => {
   const response = await api.get(`/api/public/events/${eventId}/batches`);
   return response.data;
 };
 
 // Listar campos do formulário
-export const listarCamposFormulario = async (eventId: number): Promise<FormField[]> => {
+export const listarCamposFormulario = async (eventId: string): Promise<FormField[]> => {
   const response = await api.get(`/api/public/events/${eventId}/form-fields`);
   return response.data;
 };
@@ -111,7 +111,7 @@ export const listarCamposFormulario = async (eventId: number): Promise<FormField
 // Validar cupom de desconto
 export const validarCupom = async (
   code: string,
-  eventId: number,
+  eventId: string,
   batchId: number
 ): Promise<CouponValidation> => {
   const response = await api.post('/api/public/events/coupons/validate', {

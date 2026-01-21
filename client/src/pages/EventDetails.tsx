@@ -26,14 +26,9 @@ import {
 export default function EventDetails() {
   const [, setLocation] = useLocation();
   
-  // Extrair ID da URL diretamente
+  // Extrair ID da URL diretamente (UUID string)
   const pathParts = window.location.pathname.split('/');
-  const id = pathParts[pathParts.length - 1];
-  const eventId = Number(id);
-  
-  console.log('URL path:', window.location.pathname);
-  console.log('Extracted id:', id);
-  console.log('eventId (Number):', eventId);
+  const eventId = pathParts[pathParts.length - 1];
 
   const [evento, setEvento] = useState<Event | null>(null);
   const [lotes, setLotes] = useState<EventBatch[]>([]);
