@@ -343,7 +343,20 @@ export default function EventDetails() {
                   min="1"
                   max={evento.maxPerBuyer || 10}
                   value={quantidade}
-                  onChange={(e) => setQuantidade(Number(e.target.value))}
+                  onChange={(e) => {
+                    const valor = Number(e.target.value);
+                    const limite = evento.maxPerBuyer || 10;
+                    
+                    // Não permitir valores maiores que o limite
+                    if (valor > limite) {
+                      toast.error(`Máximo de ${limite} inscrição(ões) por comprador`);
+                      setQuantidade(limite);
+                    } else if (valor < 1) {
+                      setQuantidade(1);
+                    } else {
+                      setQuantidade(valor);
+                    }
+                  }}
                 />
                 {evento.maxPerBuyer && (
                   <p className="text-sm text-gray-500 mt-1">
