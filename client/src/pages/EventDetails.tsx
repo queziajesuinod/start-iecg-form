@@ -226,7 +226,11 @@ export default function EventDetails() {
         buyerData: dadosComprador,
         attendeesData: inscritos.map((i) => i.dados),
         couponCode: cupomValido ? cupomCodigo : undefined,
-        paymentData: dadosPagamento,
+        paymentOptionId: formaPagamento,
+        paymentData: {
+          ...dadosPagamento,
+          installments: parcelas
+        },
       });
 
       if (resultado.success) {

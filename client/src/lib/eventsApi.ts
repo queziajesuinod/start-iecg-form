@@ -75,11 +75,13 @@ export interface RegistrationData {
   buyerData: Record<string, any>;
   attendeesData: Record<string, any>[];
   couponCode?: string;
+  paymentOptionId: string;
   paymentData: {
-    cardNumber: string;
-    cardHolder: string;
-    expirationDate: string;
-    securityCode: string;
+    cardNumber?: string;
+    cardHolder?: string;
+    expirationDate?: string;
+    securityCode?: string;
+    installments?: number;
   };
 }
 
