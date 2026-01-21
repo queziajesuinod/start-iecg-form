@@ -103,13 +103,13 @@ export default function EventDetails() {
     const lote = lotes.find((l) => l.id === loteId);
     if (!lote) return 0;
 
-    let total = lote.price * quantidade;
+    let total = Number(lote.price) * quantidade;
 
     if (cupomValido) {
       if (cupomValido.discountType === 'percentage') {
-        total -= total * (cupomValido.discountValue / 100);
+        total -= total * (Number(cupomValido.discountValue) / 100);
       } else {
-        total -= cupomValido.discountValue;
+        total -= Number(cupomValido.discountValue);
       }
     }
 
@@ -329,7 +329,7 @@ export default function EventDetails() {
                   <SelectContent>
                     {lotes.map((lote) => (
                       <SelectItem key={lote.id} value={lote.id.toString()}>
-                        {lote.name} - R$ {lote.price.toFixed(2)}
+                        {lote.name} - R$ {Number(lote.price).toFixed(2)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -370,7 +370,7 @@ export default function EventDetails() {
               {cupomValido && (
                 <Badge variant="secondary" className="w-fit">
                   <Tag className="h-3 w-3 mr-1" />
-                  Desconto aplicado: {cupomValido.discountType === 'percentage' ? `${cupomValido.discountValue}%` : `R$ ${cupomValido.discountValue.toFixed(2)}`}
+                   Desconto aplicado: {cupomValido.discountType === 'percentage' ? `${cupomValido.discountValue}%` : `R$ ${Number(cupomValido.discountValue).toFixed(2)}`}
                 </Badge>
               )}
 
@@ -379,12 +379,12 @@ export default function EventDetails() {
                 <div className="bg-gray-50 p-4 rounded-lg space-y-2">
                   <div className="flex justify-between">
                     <span>Subtotal:</span>
-                    <span>R$ {(loteAtual.price * quantidade).toFixed(2)}</span>
+                    <span>R$ {(Number(loteAtual.price) * quantidade).toFixed(2)}</span>
                   </div>
                   {cupomValido && (
                     <div className="flex justify-between text-green-600">
                       <span>Desconto:</span>
-                      <span>- R$ {((loteAtual.price * quantidade) - calcularValorTotal()).toFixed(2)}</span>
+                      <span>- R$ {((Number(loteAtual.price) * quantidade) - calcularValorTotal()).toFixed(2)}</span>
                     </div>
                   )}
                   <Separator />
