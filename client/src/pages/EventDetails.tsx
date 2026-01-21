@@ -41,7 +41,7 @@ export default function EventDetails() {
   const [submitting, setSubmitting] = useState(false);
 
   // Estado do formulário
-  const [loteId, setLoteId] = useState<number | null>(null);
+  const [loteId, setLoteId] = useState<string | null>(null);
   const [cupomCodigo, setCupomCodigo] = useState('');
   const [cupomValido, setCupomValido] = useState<any>(null);
   const [validandoCupom, setValidandoCupom] = useState(false);
@@ -385,13 +385,13 @@ export default function EventDetails() {
             <CardContent className="space-y-4">
               <div>
                 <Label>Lote</Label>
-                <Select value={loteId?.toString() || ''} onValueChange={(v) => setLoteId(Number(v))}>
+                <Select value={loteId || ''} onValueChange={(v) => setLoteId(v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione um lote" />
                   </SelectTrigger>
                   <SelectContent>
                     {lotes.map((lote) => (
-                      <SelectItem key={lote.id} value={lote.id.toString()}>
+                      <SelectItem key={lote.id} value={lote.id}>
                         {lote.name} - R$ {Number(lote.price).toFixed(2)}
                       </SelectItem>
                     ))}

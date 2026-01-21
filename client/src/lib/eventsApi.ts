@@ -24,7 +24,7 @@ export interface Event {
 }
 
 export interface EventBatch {
-  id: number;
+  id: string;
   eventId: string;
   name: string;
   price: number;
@@ -36,7 +36,7 @@ export interface EventBatch {
 }
 
 export interface FormField {
-  id: number;
+  id: string;
   eventId: string;
   section: 'buyer' | 'attendee';
   fieldName: string;
@@ -49,7 +49,7 @@ export interface FormField {
 }
 
 export interface PaymentOption {
-  id: number;
+  id: string;
   eventId: string;
   paymentType: 'credit_card' | 'pix' | 'boleto';
   maxInstallments: number;
@@ -70,7 +70,7 @@ export interface CouponValidation {
 
 export interface RegistrationData {
   eventId: string;
-  batchId: number;
+  batchId: string;
   quantity: number;
   buyerData: Record<string, any>;
   attendeesData: Record<string, any>[];
@@ -125,7 +125,7 @@ export const listarCamposFormulario = async (eventId: string): Promise<FormField
 export const validarCupom = async (
   code: string,
   eventId: string,
-  batchId: number
+  batchId: string
 ): Promise<CouponValidation> => {
   const response = await api.post('/api/public/events/coupons/validate', {
     code,
@@ -137,7 +137,7 @@ export const validarCupom = async (
 
 // Verificar disponibilidade de lote
 export const verificarDisponibilidade = async (
-  batchId: number,
+  batchId: string,
   quantity: number
 ): Promise<{ available: boolean; message?: string }> => {
   const response = await api.get('/api/public/events/batches/check-availability', {
