@@ -38,7 +38,7 @@ export default function Ticket() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [registration, setRegistration] = useState<Registration | null>(null);
-  const [qrCodeUrl, setQrCodeUrl] = useState('');
+  const [attendeeQRCodes, setAttendeeQRCodes] = useState<Record<string, string>>({});
 
   const loadRegistration = useCallback(async (orderCode: string) => {
     try {
@@ -53,21 +53,30 @@ export default function Ticket() {
       const data = await response.json();
       setRegistration(data);
 
-      // Gerar QR Code com o código da inscrição
-      const qrUrl = await QRCode.toDataURL(orderCode, {
-        width: 300,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF',
-        },
-      });
-      setQrCodeUrl(qrUrl);
+      setAttendeeQRCodes({});
+
+      const qrEntries = await Promise.all(
+        data.attendees.map(async (attendee) => {
+          try {
+            const payload = `${data.orderCode}:${attendee.id}`;
+            const url = await QRCode.toDataURL(payload, {
+              width: 250,
+              margin: 2,
+              color: {
+                dark: '#000000',
+                light: '#FFFFFF',
+              },
+            });
+            return [attendee.id, url] as const;
+          } catch {
+            return [attendee.id, ''] as const;
+          }
+        })
+      );
+      setAttendeeQRCodes(Object.fromEntries(qrEntries));
     } catch (error) {
-      toast({
-        title: 'Erro',
+      toast.error('Erro', {
         description: 'Não foi possível carregar os dados da inscrição',
-        variant: 'destructive',
       });
       navigate('/');
     } finally {
@@ -84,8 +93,10 @@ export default function Ticket() {
     loadRegistration(params.orderCode);
   }, [match, params?.orderCode, navigate, loadRegistration]);
 
+  const safeText = (value: unknown) => (value === undefined || value === null ? '' : String(value));
+
   const downloadTicket = async () => {
-    if (!registration || !qrCodeUrl) return;
+    if (!registration) return;
 
     try {
       const pdf = new jsPDF();
@@ -99,7 +110,7 @@ export default function Ticket() {
       // Código da inscrição
       pdf.setFontSize(12);
       pdf.setFont('helvetica', 'normal');
-      pdf.text(`Código: ${registration.orderCode}`, pageWidth / 2, 30, { align: 'center' });
+      pdf.text(safeText(`Código: ${registration.orderCode}`), pageWidth / 2, 30, { align: 'center' });
       
       // Linha separadora
       pdf.setLineWidth(0.5);
@@ -112,7 +123,7 @@ export default function Ticket() {
       
       pdf.setFontSize(12);
       pdf.setFont('helvetica', 'normal');
-      pdf.text(registration.event.name, 20, 55);
+      pdf.text(safeText(registration.event.name), 20, 55);
       
       const eventDate = new Date(registration.event.eventDate).toLocaleDateString('pt-BR', {
         day: '2-digit',
@@ -121,57 +132,66 @@ export default function Ticket() {
         hour: '2-digit',
         minute: '2-digit'
       });
-      pdf.text(`Data: ${eventDate}`, 20, 65);
-      pdf.text(`Local: ${registration.event.location}`, 20, 75);
-      
-      // QR Code
-      pdf.addImage(qrCodeUrl, 'PNG', pageWidth / 2 - 40, 85, 80, 80);
+      pdf.text(safeText(`Data: ${eventDate}`), 20, 65);
+      pdf.text(safeText(`Local: ${registration.event.location}`), 20, 75);
       
       pdf.setFontSize(10);
-      pdf.text('Apresente este QR Code na entrada do evento', pageWidth / 2, 175, { align: 'center' });
+      pdf.text(
+        'Apresente o QR Code correspondente a cada inscrito na entrada do evento',
+        pageWidth / 2,
+        175,
+        {
+          align: 'center',
+        }
+      );
       
-      // Inscritos
       let yPos = 190;
       pdf.setFontSize(14);
       pdf.setFont('helvetica', 'bold');
       pdf.text('Inscritos', 20, yPos);
-      
+
       yPos += 10;
       pdf.setFontSize(11);
       pdf.setFont('helvetica', 'normal');
-      
+
       registration.attendees.forEach((attendee, index) => {
         const nome = attendee.attendeeData.nome_do_inscrito || attendee.attendeeData.nome || `Inscrito ${index + 1}`;
-        pdf.text(`• ${nome} - ${attendee.batch.name}`, 25, yPos);
-        yPos += 8;
+        const attendeeQr = attendeeQRCodes[attendee.id];
+        const text = `• ${safeText(nome)} - ${safeText(attendee.batch.name)}`;
+        if (attendeeQr) {
+          const qrSize = 40;
+          pdf.addImage(attendeeQr, 'PNG', 25, yPos, qrSize, qrSize);
+          pdf.text(text, 25 + qrSize + 8, yPos + qrSize / 2);
+          yPos += qrSize + 8;
+        } else {
+          pdf.text(text, 25, yPos);
+          yPos += 8;
+        }
       });
       
       // Total
       yPos += 5;
       pdf.setFontSize(12);
       pdf.setFont('helvetica', 'bold');
-      pdf.text(`Total Pago: R$ ${Number(registration.finalPrice).toFixed(2).replace('.', ',')}`, 20, yPos);
+      pdf.text(safeText(`Total Pago: R$ ${Number(registration.finalPrice).toFixed(2).replace('.', ',')}`), 20, yPos);
       
       // Status do pagamento
       yPos += 10;
       const isPaid = registration.paymentStatus === 'confirmed' || registration.paymentStatus === 'paid';
       pdf.setFontSize(10);
       pdf.setFont('helvetica', 'normal');
-      pdf.text(`Status: ${isPaid ? 'Pagamento Confirmado' : 'Aguardando Pagamento'}`, 20, yPos);
+      pdf.text(safeText(`Status: ${isPaid ? 'Pagamento Confirmado' : 'Aguardando Pagamento'}`), 20, yPos);
       
       // Salvar PDF
       pdf.save(`ticket-${registration.orderCode}.pdf`);
       
-      toast({
-        title: 'Sucesso!',
+      toast.success('Sucesso!', {
         description: 'Ticket baixado com sucesso',
       });
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);
-      toast({
-        title: 'Erro',
+      toast.error('Erro', {
         description: 'Não foi possível gerar o PDF',
-        variant: 'destructive',
       });
     }
   };
@@ -228,15 +248,30 @@ export default function Ticket() {
             </div>
           </CardHeader>
           <CardContent className="pt-6 space-y-6">
-            {/* QR Code */}
-            <div className="flex flex-col items-center space-y-4">
-              <div className="bg-white p-4 rounded-lg border-2 border-dashed">
-                {qrCodeUrl && (
-                  <img src={qrCodeUrl} alt="QR Code do Ticket" className="w-64 h-64" />
-                )}
+            {/* QR Code por inscrito */}
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                {registration.attendees.map((attendee, index) => {
+                  const nome = attendee.attendeeData.nome_do_inscrito || attendee.attendeeData.nome || `Inscrito ${index + 1}`;
+                  const attendeeQr = attendeeQRCodes[attendee.id];
+
+                  return (
+                    <div key={attendee.id} className="bg-white p-4 rounded-lg border-2 border-dashed flex flex-col items-center">
+                      {attendeeQr ? (
+                        <img src={attendeeQr} alt={`QR Code de ${nome}`} className="w-48 h-48 object-contain" />
+                      ) : (
+                        <div className="w-48 h-48 flex items-center justify-center text-xs text-muted-foreground">
+                          QR Code sendo gerado...
+                        </div>
+                      )}
+                      <p className="mt-2 font-semibold text-center">{nome}</p>
+                      <p className="text-xs text-muted-foreground">Lote: {attendee.batch.name}</p>
+                    </div>
+                  );
+                })}
               </div>
               <p className="text-sm text-muted-foreground text-center">
-                Apresente este QR Code na entrada do evento
+                Apresente o QR Code correspondente ao seu nome na entrada do evento
               </p>
             </div>
 

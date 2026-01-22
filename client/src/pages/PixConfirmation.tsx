@@ -7,13 +7,13 @@ import { Copy, Check, QrCode, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function PixConfirmation() {
-  const [location, setLocation] = useLocation();
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
   const [checking, setChecking] = useState(false);
 
-  // Pegar dados da URL ou localStorage
-  const searchParams = new URLSearchParams(location.split('?')[1]);
+  // Pegar dados da URL
+  const searchParams = new URLSearchParams(window.location.search);
   const orderCode = searchParams.get('orderCode');
   const pixCode = searchParams.get('pixCode');
   const pixQrCodeBase64 = searchParams.get('qrCode');
@@ -37,8 +37,7 @@ export default function PixConfirmation() {
           const data = await response.json();
           
           if (data.isPaid) {
-            toast({
-              title: 'Pagamento confirmado!',
+            toast.success('Pagamento confirmado!', {
               description: 'Redirecionando para o seu ticket...',
             });
             setTimeout(() => {
@@ -68,16 +67,13 @@ export default function PixConfirmation() {
     try {
       await navigator.clipboard.writeText(pixCode);
       setCopied(true);
-      toast({
-        title: 'Copiado!',
+      toast.success('Copiado!', {
         description: 'Código PIX copiado para a área de transferência',
       });
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      toast({
-        title: 'Erro',
+      toast.error('Erro', {
         description: 'Não foi possível copiar o código',
-        variant: 'destructive',
       });
     }
   };
@@ -95,25 +91,20 @@ export default function PixConfirmation() {
       const data = await response.json();
       
       if (data.isPaid) {
-        toast({
-          title: 'Pagamento confirmado!',
+        toast.success('Pagamento confirmado!', {
           description: 'Redirecionando para o seu ticket...',
         });
         setTimeout(() => {
           setLocation(`/ticket/${orderCode}`);
         }, 1500);
       } else {
-        toast({
-          title: 'Pagamento pendente',
+        toast.error('Pagamento pendente', {
           description: 'Ainda não identificamos o pagamento. Tente novamente em alguns instantes.',
-          variant: 'destructive',
         });
       }
     } catch (error) {
-      toast({
-        title: 'Erro',
+      toast.error('Erro', {
         description: 'Não foi possível verificar o status do pagamento',
-        variant: 'destructive',
       });
     } finally {
       setChecking(false);
