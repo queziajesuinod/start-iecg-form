@@ -10,6 +10,7 @@ import StartForm from "./pages/StartForm";
 import EventList from "./pages/EventList";
 import EventDetails from "./pages/EventDetails";
 import RegistrationConfirmation from "./pages/RegistrationConfirmation";
+import RegistrationView from "./pages/RegistrationView";
 import PixConfirmation from "./pages/PixConfirmation";
 import Ticket from "./pages/Ticket";
 
@@ -21,6 +22,7 @@ function Router() {
       <Route path={"/eventos"} component={EventList} />
       <Route path={"/eventos/:id"} component={EventDetails} />
       <Route path={"/inscricao/:orderCode"} component={RegistrationConfirmation} />
+      <Route path={"/inscricao/:id/visualizacao"} component={RegistrationView} />
       <Route path={"/pix-confirmacao"} component={PixConfirmation} />
       <Route path={"/ticket/:orderCode"} component={Ticket} />
       <Route path={"/celulas/atualizar"} component={AtualizarCelula} />
