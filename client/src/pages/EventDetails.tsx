@@ -81,6 +81,8 @@ export default function EventDetails() {
   }>>([{ dados: {}, salvo: false, id: '1', batchId: null }]);
   const [formaPagamento, setFormaPagamento] = useState<string>(''); // ID da forma de pagamento
   const [parcelas, setParcelas] = useState(1);
+  const [valorPagamento, setValorPagamento] = useState('');
+  const [valorPagamentoEditado, setValorPagamentoEditado] = useState(false);
   const [dadosPagamento, setDadosPagamento] = useState({
     cardNumber: '',
     cardHolder: '',
@@ -210,44 +212,46 @@ export default function EventDetails() {
     }
   };
 
-  const calcularValorTotal = () => {
-    // Somar preço de cada inscrito baseado no seu lote específico
-    let total = 0;
-    for (const inscrito of inscritos) {
-      if (inscrito.batchId) {
-        const lote = lotes.find((l) => l.id === inscrito.batchId);
-        if (lote) {
-          total += Number(lote.price);
-        }
-      }
-    }
-    
-    if (total === 0) return 0;
+  const calcularSubtotal = () =>
+    inscritos.reduce((sum, inscrito) => {
+      if (!inscrito.batchId) return sum;
+      const lote = lotes.find((l) => l.id === inscrito.batchId);
+      return sum + (lote ? Number(lote.price) : 0);
+    }, 0);
 
-    if (cupomValido) {
-      if (cupomValido.discountType === 'percentage') {
-        total -= total * (Number(cupomValido.discountValue) / 100);
-      } else {
-        total -= Number(cupomValido.discountValue);
-      }
+  const calcularDesconto = (subtotal: number) => {
+    if (!cupomValido) return 0;
+    if (cupomValido.discountType === 'percentage') {
+      return subtotal * (Number(cupomValido.discountValue) / 100);
     }
+    return Number(cupomValido.discountValue);
+  };
+
+  const calcularValorTotal = (installments = parcelas) => {
+    // Somar preço de cada inscrito baseado no seu lote específico
+    const subtotal = calcularSubtotal();
+    if (subtotal === 0) return 0;
+
+    let total = subtotal - calcularDesconto(subtotal);
 
     // Aplicar juros se houver parcelas
-    if (formaPagamento && parcelas > 1) {
+    if (formaPagamento && installments > 1) {
       const pagamento = formasPagamento.find((f) => f.id === formaPagamento);
       if (pagamento && pagamento.interestRate > 0) {
         if (pagamento.interestType === 'percentage') {
           // Juros percentual por parcela
-          total += total * (Number(pagamento.interestRate) / 100) * (parcelas - 1);
+          total += total * (Number(pagamento.interestRate) / 100) * (installments - 1);
         } else {
           // Juros fixo por parcela
-          total += Number(pagamento.interestRate) * (parcelas - 1);
+          total += Number(pagamento.interestRate) * (installments - 1);
         }
       }
     }
 
     return Math.max(0, total);
   };
+
+  const parseValorPagamento = () => Number(valorPagamento.replace(',', '.'));
 
   const validarFormulario = () => {
     // Validar que todos os inscritos têm um lote selecionado
@@ -289,6 +293,19 @@ export default function EventDetails() {
       }
     }
 
+    if (evento?.registrationPaymentMode === 'BALANCE_DUE') {
+      const total = calcularValorTotal();
+      const valor = parseValorPagamento();
+      if (!valor || valor <= 0) {
+        toast.error('Informe o valor do sinal ou pagamento inicial');
+        return false;
+      }
+      if (valor > total) {
+        toast.error('O valor informado não pode ser maior que o total');
+        return false;
+      }
+    }
+
     return true;
   };
 
@@ -299,6 +316,8 @@ export default function EventDetails() {
 
     try {
       setSubmitting(true);
+      const pagamentoInicial =
+        evento?.registrationPaymentMode === 'BALANCE_DUE' ? parseValorPagamento() : undefined;
       const resultado = await processarInscricao({
         eventId,
         quantity: inscritos.length,
@@ -311,7 +330,8 @@ export default function EventDetails() {
         paymentOptionId: formaPagamento,
         paymentData: {
           ...dadosPagamento,
-          installments: parcelas
+          installments: parcelas,
+          amount: pagamentoInicial,
         },
       });
 
@@ -477,6 +497,47 @@ export default function EventDetails() {
     }
   };
 
+  const camposComprador = campos.filter((c) => c.section === 'buyer').sort((a, b) => a.orderIndex - b.orderIndex);
+  const camposInscrito = campos.filter((c) => c.section === 'attendee').sort((a, b) => a.orderIndex - b.orderIndex);
+  const hasLoteSelecionado = inscritos.some((i) => Boolean(i.batchId));
+  const cupomDigitado = cupomCodigo.trim();
+  const subtotal = calcularSubtotal();
+  const desconto = calcularDesconto(subtotal);
+  const totalComJuros = calcularValorTotal();
+  const jurosAplicados = Math.max(0, totalComJuros - Math.max(0, subtotal - desconto));
+  const valorPagamentoNumero = parseValorPagamento();
+  const pagamentoAgora =
+    evento?.registrationPaymentMode === 'BALANCE_DUE' && valorPagamentoNumero > 0
+      ? valorPagamentoNumero
+      : 0;
+  const saldoEstimado =
+    evento?.registrationPaymentMode === 'BALANCE_DUE'
+      ? Math.max(0, totalComJuros - pagamentoAgora)
+      : 0;
+
+  useEffect(() => {
+    if (evento?.registrationPaymentMode !== 'BALANCE_DUE') {
+      setValorPagamento('');
+      setValorPagamentoEditado(false);
+      return;
+    }
+    if (valorPagamentoEditado) return;
+    if (!totalComJuros) {
+      setValorPagamento('');
+      return;
+    }
+    if (evento.depositAmount) {
+      setValorPagamento(evento.depositAmount.toFixed(2));
+    } else {
+      setValorPagamento('');
+    }
+  }, [
+    evento?.registrationPaymentMode,
+    evento?.depositAmount,
+    totalComJuros,
+    valorPagamentoEditado,
+  ]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -496,11 +557,6 @@ export default function EventDetails() {
       </div>
     );
   }
-
-  const camposComprador = campos.filter((c) => c.section === 'buyer').sort((a, b) => a.orderIndex - b.orderIndex);
-  const camposInscrito = campos.filter((c) => c.section === 'attendee').sort((a, b) => a.orderIndex - b.orderIndex);
-  const hasLoteSelecionado = inscritos.some((i) => Boolean(i.batchId));
-  const cupomDigitado = cupomCodigo.trim();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
@@ -743,25 +799,42 @@ export default function EventDetails() {
               <div className="bg-gray-50 p-4 rounded-lg space-y-2">
                 <div className="flex justify-between">
                   <span>Subtotal:</span>
-                  <span>R$ {inscritos.reduce((sum, i) => {
-                    const lote = lotes.find(l => l.id === i.batchId);
-                    return sum + (lote ? Number(lote.price) : 0);
-                  }, 0).toFixed(2)}</span>
+                  <span>R$ {subtotal.toFixed(2)}</span>
                 </div>
                 {cupomValido && (
                   <div className="flex justify-between text-green-600">
                     <span>Desconto:</span>
-                    <span>- R$ {(inscritos.reduce((sum, i) => {
-                      const lote = lotes.find(l => l.id === i.batchId);
-                      return sum + (lote ? Number(lote.price) : 0);
-                    }, 0) - calcularValorTotal()).toFixed(2)}</span>
+                    <span>- R$ {Math.min(desconto, subtotal).toFixed(2)}</span>
+                  </div>
+                )}
+                {jurosAplicados > 0 && (
+                  <div className="flex justify-between text-orange-600">
+                    <span>Juros:</span>
+                    <span>+ R$ {jurosAplicados.toFixed(2)}</span>
                   </div>
                 )}
                 <Separator />
                 <div className="flex justify-between font-bold text-lg">
                   <span>Total:</span>
-                  <span>R$ {calcularValorTotal().toFixed(2)}</span>
+                  <span>R$ {totalComJuros.toFixed(2)}</span>
                 </div>
+                {evento?.registrationPaymentMode === 'BALANCE_DUE' && (
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <div className="flex justify-between">
+                      <span>Pagamento agora:</span>
+                      <span>R$ {pagamentoAgora.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Saldo restante:</span>
+                      <span>R$ {saldoEstimado.toFixed(2)}</span>
+                    </div>
+                  </div>
+                )}
+                {formaPagamento && parcelas > 1 && (
+                  <div className="text-sm text-muted-foreground">
+                    Parcelado em {parcelas}x de R$ {(totalComJuros / parcelas).toFixed(2)}
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -779,7 +852,16 @@ export default function EventDetails() {
               <CardContent className="space-y-4">
                 <div>
                   <Label>Selecione a forma de pagamento</Label>
-                  <Select value={formaPagamento} onValueChange={setFormaPagamento}>
+                  <Select
+                    value={formaPagamento}
+                    onValueChange={(value) => {
+                      setFormaPagamento(value);
+                      const selecionada = formasPagamento.find((f) => f.id === value);
+                      if (selecionada?.paymentType !== 'credit_card') {
+                        setParcelas(1);
+                      }
+                    }}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Escolha uma opção" />
                     </SelectTrigger>
@@ -795,6 +877,54 @@ export default function EventDetails() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {evento?.registrationPaymentMode === 'BALANCE_DUE' && (
+                  <div className="rounded-lg border bg-blue-50 p-4 space-y-3">
+                    <div>
+                      <Label htmlFor="valor-pagamento">Valor do sinal/pagamento inicial</Label>
+                      <Input
+                        id="valor-pagamento"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        max={totalComJuros}
+                        value={valorPagamento}
+                        onChange={(e) => {
+                          setValorPagamento(e.target.value);
+                          setValorPagamentoEditado(true);
+                        }}
+                        placeholder="0,00"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Informe o valor do sinal ou escolha pagar o total. O restante poderá ser quitado depois.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {evento?.depositAmount && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setValorPagamento(evento.depositAmount?.toFixed(2) ?? '');
+                            setValorPagamentoEditado(true);
+                          }}
+                        >
+                          Usar sinal sugerido (R$ {evento.depositAmount.toFixed(2)})
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setValorPagamento(totalComJuros.toFixed(2));
+                          setValorPagamentoEditado(true);
+                        }}
+                      >
+                        Pagar total
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 
                 {/* Parcelas (apenas para cartão) */}
                 {formaPagamento && formasPagamento.find((f) => f.id === formaPagamento)?.paymentType === 'credit_card' && (
@@ -810,7 +940,8 @@ export default function EventDetails() {
                           (_, i) => i + 1
                         ).map((p) => {
                           const pagamento = formasPagamento.find((f) => f.id === formaPagamento);
-                          const valorParcela = calcularValorTotal() / p;
+                          const totalParcelado = calcularValorTotal(p);
+                          const valorParcela = totalParcelado / p;
                           const semJuros = !pagamento || pagamento.interestRate === 0 || p === 1;
                           return (
                             <SelectItem key={p} value={p.toString()}>
