@@ -124,6 +124,15 @@ export interface RegistrationPayment {
   notes?: string | null;
 }
 
+export interface RegistrationPaymentData {
+  cardNumber?: string;
+  cardHolder?: string;
+  expirationDate?: string;
+  securityCode?: string;
+  installments?: number;
+  amount?: number;
+}
+
 export interface RegistrationDetails {
   id: string;
   orderCode?: string;
@@ -157,6 +166,7 @@ export interface CreateRegistrationPaymentPayload {
   amount: number;
   method: 'pix' | 'credit_card';
   paymentOptionId: string;
+  paymentData?: RegistrationPaymentData;
 }
 
 // Listar eventos públicos ativos

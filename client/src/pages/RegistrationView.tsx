@@ -13,10 +13,12 @@ import {
   buscarFormasPagamento,
   consultarInscricao,
   criarPagamentoInscricao,
+  type CreateRegistrationPaymentPayload,
   type PaymentOption,
   type RegistrationDetails,
   type RegistrationPayment,
 } from '@/lib/eventsApi';
+import { maskCardExpiry, maskCreditCard, maskCVV, removeNonDigits } from '@/lib/masks';
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -81,6 +83,15 @@ const statusLabel: Record<RegistrationPayment['status'], string> = {
   canceled: 'Cancelado',
 };
 
+const initialCardData = {
+  cardNumber: '',
+  cardHolder: '',
+  expirationDate: '',
+  securityCode: '',
+};
+
+const formatNumberInput = (value: number) => value.toFixed(2);
+
 export default function RegistrationView() {
   const [, params] = useRoute('/inscricao/:orderCode/visualizacao');
   const [, setLocation] = useLocation();
@@ -94,6 +105,26 @@ export default function RegistrationView() {
   const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([]);
   const [selectedPaymentOptionId, setSelectedPaymentOptionId] = useState('');
   const [loadingPaymentOptions, setLoadingPaymentOptions] = useState(false);
+  const [installments, setInstallments] = useState(1);
+  const [cardData, setCardData] = useState(initialCardData);
+  const [copyingPixCode, setCopyingPixCode] = useState(false);
+
+  const handleCopyPixCode = async () => {
+    if (!registration?.pixQrCode) {
+      toast.error('Código PIX não disponível');
+      return;
+    }
+    try {
+      setCopyingPixCode(true);
+      await navigator.clipboard.writeText(registration.pixQrCode);
+      toast.success('Código PIX copiado');
+    } catch (error) {
+      console.error('Erro ao copiar PIX code', error);
+      toast.error('Não foi possível copiar o código PIX');
+    } finally {
+      setCopyingPixCode(false);
+    }
+  };
 
   const carregarInscricao = async () => {
     if (!orderCode) return;
@@ -115,6 +146,13 @@ export default function RegistrationView() {
   }, [orderCode]);
 
   useEffect(() => {
+    if (method !== 'credit_card') {
+      setCardData(initialCardData);
+      setInstallments(1);
+    }
+  }, [method]);
+
+  useEffect(() => {
     const eventId = registration?.event?.id;
     if (!eventId) {
       setPaymentOptions([]);
@@ -129,7 +167,9 @@ export default function RegistrationView() {
         setLoadingPaymentOptions(true);
         const options = await buscarFormasPagamento(eventId);
         if (cancelled) return;
-        const activeOptions = options.filter((opt) => opt.isActive);
+        const activeOptions = options.filter(
+          (opt) => opt.isActive && opt.eventId === eventId
+        );
         setPaymentOptions(activeOptions);
       } catch (error) {
         console.error('Erro ao carregar formas de pagamento:', error);
@@ -174,7 +214,10 @@ export default function RegistrationView() {
     !isPaid &&
     registration.remaining > 0;
 
-  const optionsForMethod = paymentOptions.filter((option) => option.paymentType === method);
+  const eventIdForRegistration = registration?.event?.id;
+  const optionsForMethod = paymentOptions.filter(
+    (option) => option.paymentType === method && option.eventId === eventIdForRegistration
+  );
 
   useEffect(() => {
     if (!optionsForMethod.length) {
@@ -185,6 +228,24 @@ export default function RegistrationView() {
       setSelectedPaymentOptionId(optionsForMethod[0].id);
     }
   }, [method, optionsForMethod]);
+
+  const selectedPaymentOption = paymentOptions.find((option) => option.id === selectedPaymentOptionId);
+  const showCreditCardFields =
+    method === 'credit_card' && selectedPaymentOption?.paymentType === 'credit_card';
+  const maxInstallments = Math.max(1, selectedPaymentOption?.maxInstallments ?? 1);
+  const installmentOptions = Array.from({ length: maxInstallments }, (_, index) => index + 1);
+  const interestDescription =
+    selectedPaymentOption && selectedPaymentOption.interestRate > 0
+      ? selectedPaymentOption.interestType === 'percentage'
+        ? `${selectedPaymentOption.interestRate}% ao mês`
+        : `R$ ${selectedPaymentOption.interestRate.toFixed(2)} fixo`
+      : 'Sem juros';
+
+  useEffect(() => {
+    if (method === 'credit_card' && installments > maxInstallments) {
+      setInstallments(maxInstallments);
+    }
+  }, [installments, method, maxInstallments]);
 
   const handleSubmitPayment = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -212,15 +273,40 @@ export default function RegistrationView() {
       return;
     }
 
+    if (method === 'credit_card') {
+      const sanitizedCardNumber = removeNonDigits(cardData.cardNumber);
+      if (!sanitizedCardNumber || !cardData.cardHolder.trim() || !cardData.expirationDate || !cardData.securityCode) {
+        toast.error('Preencha todos os dados do cartão.');
+        return;
+      }
+    }
+
     try {
       setSubmitting(true);
-      const updated = await criarPagamentoInscricao(registration.id, {
+      const payload: CreateRegistrationPaymentPayload = {
         amount: parsedAmount,
         method,
         paymentOptionId: selectedPaymentOption.id,
-      });
+      };
+
+      if (method === 'credit_card') {
+        payload.paymentData = {
+          cardNumber: removeNonDigits(cardData.cardNumber),
+          cardHolder: cardData.cardHolder.trim(),
+          expirationDate: cardData.expirationDate,
+          securityCode: cardData.securityCode,
+          installments,
+          amount: parsedAmount,
+        };
+      }
+
+      const updated = await criarPagamentoInscricao(registration.id, payload);
       setRegistration(updated);
       setAmount('');
+      if (method === 'credit_card') {
+        setCardData(initialCardData);
+        setInstallments(1);
+      }
       toast.success('Pagamento enviado com sucesso.');
     } catch (error) {
       console.error('Erro ao criar pagamento:', error);
@@ -390,6 +476,22 @@ export default function RegistrationView() {
               <p className="text-sm text-muted-foreground text-center">
                 Após o pagamento, esta tela será atualizada automaticamente.
               </p>
+              {registration.pixQrCode && (
+                <div className="w-full max-w-xl space-y-2">
+                  <Label className="text-xs uppercase tracking-wide">Código PIX</Label>
+                  <div className="flex gap-2">
+                    <Input value={registration.pixQrCode} readOnly className="flex-1" />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleCopyPixCode}
+                      disabled={copyingPixCode}
+                    >
+                      {copyingPixCode ? 'Copiando...' : 'Copiar código'}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -440,6 +542,26 @@ export default function RegistrationView() {
                       onChange={(event) => setAmount(event.target.value)}
                       placeholder="0,00"
                     />
+                    {method === 'pix' && registration && (
+                      <div className="flex flex-wrap gap-2 pt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          onClick={() => setAmount(formatNumberInput(registration.remaining))}
+                        >
+                          Pagar total agora (R$ {formatCurrency(registration.remaining)})
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          onClick={() => setAmount('')}
+                        >
+                          Registrar outra parcela
+                        </Button>
+                      </div>
+                    )}
                     <p className="text-xs text-muted-foreground">
                       Saldo restante: {formatCurrency(registration.remaining)}
                     </p>
@@ -496,32 +618,122 @@ export default function RegistrationView() {
                           Nenhuma forma ativa encontrada para {method === 'pix' ? 'PIX' : 'Cartão'}.
                         </p>
                       )}
+                </div>
+              </div>
+            </div>
+            {showCreditCardFields && selectedPaymentOption && (
+              <div className="space-y-6 pt-4 border-t">
+                {maxInstallments > 1 && (
+                  <div className="space-y-2">
+                    <Label>Número de parcelas</Label>
+                    <Select value={installments.toString()} onValueChange={(value) => setInstallments(Number(value))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Quantidade de parcelas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {installmentOptions.map((option) => (
+                          <SelectItem key={option} value={option.toString()}>
+                            {option}x
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">Juros do plano: {interestDescription}</p>
+                  </div>
+                )}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium">Dados do Cartão</h4>
+                    <span className="text-xs text-muted-foreground">
+                      {selectedPaymentOption.interestRate > 0 ? 'Pagamento com juros' : 'Sem juros'}
+                    </span>
+                  </div>
+                  <div>
+                    <Label>Número do Cartão</Label>
+                    <Input
+                      placeholder="0000 0000 0000 0000"
+                      value={cardData.cardNumber}
+                      onChange={(event) => {
+                        const masked = maskCreditCard(event.target.value);
+                        setCardData((prev) => ({ ...prev, cardNumber: masked }));
+                      }}
+                      maxLength={19}
+                    />
+                  </div>
+                  <div>
+                    <Label>Nome no Cartão</Label>
+                    <Input
+                      placeholder="NOME COMPLETO"
+                      value={cardData.cardHolder}
+                      onChange={(event) =>
+                        setCardData((prev) => ({ ...prev, cardHolder: event.target.value.toUpperCase() }))
+                      }
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Validade (MM/AAAA)</Label>
+                      <Input
+                        placeholder="MM/AAAA"
+                        value={cardData.expirationDate}
+                        onChange={(event) => {
+                          const masked = maskCardExpiry(event.target.value);
+                          setCardData((prev) => ({ ...prev, expirationDate: masked }));
+                        }}
+                        maxLength={7}
+                      />
+                    </div>
+                    <div>
+                      <Label>CVV</Label>
+                      <Input
+                        placeholder="123"
+                        type="password"
+                        value={cardData.securityCode}
+                        onChange={(event) => {
+                          const masked = maskCVV(event.target.value);
+                          setCardData((prev) => ({ ...prev, securityCode: masked }));
+                        }}
+                        maxLength={4}
+                      />
                     </div>
                   </div>
                 </div>
-                <Button
-                  type="submit"
-                  disabled={
-                    submitting ||
-                    loadingPaymentOptions ||
-                    !optionsForMethod.length ||
-                    !selectedPaymentOptionId
-                  }
-                  className="w-full"
-                >
-                  {submitting ? (
-                    <span className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Processando...
-                    </span>
-                  ) : (
-                    'Pagar agora'
-                  )}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        )}
+              </div>
+            )}
+            {method === 'pix' && (
+              <div className="space-y-2 rounded-lg border border-dashed border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                <p>
+                  Após gerar o pagamento via PIX, o QR Code será exibido abaixo para você concluir o pagamento
+                  diretamente pelo seu aplicativo bancário.
+                </p>
+                <p className="text-xs text-blue-800">
+                  A atualização do status e do saldo ocorrerá automaticamente assim que o PIX for confirmado.
+                </p>
+              </div>
+            )}
+            <Button
+              type="submit"
+              disabled={
+                submitting ||
+                loadingPaymentOptions ||
+                !optionsForMethod.length ||
+                !selectedPaymentOptionId
+              }
+              className="w-full"
+            >
+              {submitting ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Processando...
+                </span>
+              ) : (
+                'Pagar agora'
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    )}
 
         <Card>
           <CardHeader>
