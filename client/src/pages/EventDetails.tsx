@@ -555,15 +555,6 @@ export default function EventDetails() {
     );
   }
 
-  const camposComprador = campos.filter((c) => c.section === 'buyer').sort((a, b) => a.orderIndex - b.orderIndex);
-  const camposInscrito = campos.filter((c) => c.section === 'attendee').sort((a, b) => a.orderIndex - b.orderIndex);
-  const hasLoteSelecionado = inscritos.some((i) => Boolean(i.batchId));
-  const cupomDigitado = cupomCodigo.trim();
-  const subtotal = calcularSubtotal();
-  const desconto = calcularDesconto(subtotal);
-  const totalComJuros = calcularValorTotal();
-  const jurosAplicados = Math.max(0, totalComJuros - Math.max(0, subtotal - desconto));
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
       <div className="container max-w-4xl mx-auto">
