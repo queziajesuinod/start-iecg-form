@@ -81,6 +81,8 @@ export default function EventDetails() {
   }>>([{ dados: {}, salvo: false, id: '1', batchId: null }]);
   const [formaPagamento, setFormaPagamento] = useState<string>(''); // ID da forma de pagamento
   const [parcelas, setParcelas] = useState(1);
+  const [valorPagamento, setValorPagamento] = useState('');
+  const [valorPagamentoEditado, setValorPagamentoEditado] = useState(false);
   const [dadosPagamento, setDadosPagamento] = useState({
     cardNumber: '',
     cardHolder: '',
@@ -249,6 +251,8 @@ export default function EventDetails() {
     return Math.max(0, total);
   };
 
+  const parseValorPagamento = () => Number(valorPagamento.replace(',', '.'));
+
   const validarFormulario = () => {
     // Validar que todos os inscritos têm um lote selecionado
     const inscritosSemLote = inscritos.filter((i) => !i.batchId);
@@ -289,6 +293,19 @@ export default function EventDetails() {
       }
     }
 
+    if (evento?.registrationPaymentMode === 'BALANCE_DUE') {
+      const total = calcularValorTotal();
+      const valor = parseValorPagamento();
+      if (!valor || valor <= 0) {
+        toast.error('Informe o valor do sinal ou pagamento inicial');
+        return false;
+      }
+      if (valor > total) {
+        toast.error('O valor informado não pode ser maior que o total');
+        return false;
+      }
+    }
+
     return true;
   };
 
@@ -299,6 +316,8 @@ export default function EventDetails() {
 
     try {
       setSubmitting(true);
+      const pagamentoInicial =
+        evento?.registrationPaymentMode === 'BALANCE_DUE' ? parseValorPagamento() : undefined;
       const resultado = await processarInscricao({
         eventId,
         quantity: inscritos.length,
@@ -311,7 +330,8 @@ export default function EventDetails() {
         paymentOptionId: formaPagamento,
         paymentData: {
           ...dadosPagamento,
-          installments: parcelas
+          installments: parcelas,
+          amount: pagamentoInicial,
         },
       });
 
@@ -476,6 +496,44 @@ export default function EventDetails() {
         return <Input {...commonProps} value={valor || ''} onChange={(e) => onChange(e.target.value)} />;
     }
   };
+
+  const camposComprador = campos.filter((c) => c.section === 'buyer').sort((a, b) => a.orderIndex - b.orderIndex);
+  const camposInscrito = campos.filter((c) => c.section === 'attendee').sort((a, b) => a.orderIndex - b.orderIndex);
+  const hasLoteSelecionado = inscritos.some((i) => Boolean(i.batchId));
+  const cupomDigitado = cupomCodigo.trim();
+  const subtotal = calcularSubtotal();
+  const desconto = calcularDesconto(subtotal);
+  const totalComJuros = calcularValorTotal();
+  const jurosAplicados = Math.max(0, totalComJuros - Math.max(0, subtotal - desconto));
+  const valorPagamentoNumero = parseValorPagamento();
+  const pagamentoAgora =
+    evento?.registrationPaymentMode === 'BALANCE_DUE' && valorPagamentoNumero > 0
+      ? valorPagamentoNumero
+      : totalComJuros;
+  const saldoEstimado =
+    evento?.registrationPaymentMode === 'BALANCE_DUE'
+      ? Math.max(0, totalComJuros - pagamentoAgora)
+      : 0;
+
+  useEffect(() => {
+    if (evento?.registrationPaymentMode !== 'BALANCE_DUE') {
+      setValorPagamento('');
+      setValorPagamentoEditado(false);
+      return;
+    }
+    if (valorPagamentoEditado) return;
+    if (!totalComJuros) {
+      setValorPagamento('');
+      return;
+    }
+    const sugerido = evento.depositAmount ?? totalComJuros;
+    setValorPagamento(sugerido.toFixed(2));
+  }, [
+    evento?.registrationPaymentMode,
+    evento?.depositAmount,
+    totalComJuros,
+    valorPagamentoEditado,
+  ]);
 
   if (loading) {
     return (
@@ -813,6 +871,54 @@ export default function EventDetails() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {evento?.registrationPaymentMode === 'BALANCE_DUE' && (
+                  <div className="rounded-lg border bg-blue-50 p-4 space-y-3">
+                    <div>
+                      <Label htmlFor="valor-pagamento">Valor do sinal/pagamento inicial</Label>
+                      <Input
+                        id="valor-pagamento"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        max={totalComJuros}
+                        value={valorPagamento}
+                        onChange={(e) => {
+                          setValorPagamento(e.target.value);
+                          setValorPagamentoEditado(true);
+                        }}
+                        placeholder="0,00"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Você pode pagar apenas um sinal agora e quitar o restante depois.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {evento?.depositAmount && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setValorPagamento(evento.depositAmount?.toFixed(2) ?? '');
+                            setValorPagamentoEditado(true);
+                          }}
+                        >
+                          Usar sinal sugerido (R$ {evento.depositAmount.toFixed(2)})
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setValorPagamento(totalComJuros.toFixed(2));
+                          setValorPagamentoEditado(true);
+                        }}
+                      >
+                        Pagar total
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 
                 {/* Parcelas (apenas para cartão) */}
                 {formaPagamento && formasPagamento.find((f) => f.id === formaPagamento)?.paymentType === 'credit_card' && (

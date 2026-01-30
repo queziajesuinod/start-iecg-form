@@ -21,6 +21,8 @@ export interface Event {
   currentRegistrations: number;
   maxPerBuyer?: number;
   isActive: boolean;
+  registrationPaymentMode?: 'SINGLE' | 'BALANCE_DUE';
+  depositAmount?: number;
 }
 
 export interface EventBatch {
@@ -96,6 +98,7 @@ export interface RegistrationData {
     expirationDate?: string;
     securityCode?: string;
     installments?: number;
+    amount?: number;
   };
 }
 
