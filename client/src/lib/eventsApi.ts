@@ -61,13 +61,22 @@ export interface PaymentOption {
 }
 
 export interface CouponValidation {
-  valid: boolean;
+  valido: boolean;
   coupon?: {
     code: string;
     discountType: 'percentage' | 'fixed';
     discountValue: number;
   };
   message?: string;
+}
+
+export interface CouponValidationRequest {
+  code: string;
+  eventId: string;
+  batchId: string;
+  quantity?: number;
+  attendees?: Array<{ batchId: string; data?: Record<string, unknown> }>;
+  attendeesData?: Array<{ batchId: string; data: Record<string, unknown> }>;
 }
 
 export interface RegistrationData {
@@ -128,15 +137,9 @@ export const listarCamposFormulario = async (eventId: string): Promise<FormField
 
 // Validar cupom de desconto
 export const validarCupom = async (
-  code: string,
-  eventId: string,
-  batchId: string
+  payload: CouponValidationRequest
 ): Promise<CouponValidation> => {
-  const response = await api.post('/api/public/events/coupons/validate', {
-    code,
-    eventId,
-    batchId,
-  });
+  const response = await api.post('/api/public/events/coupons/validate', payload);
   return response.data;
 };
 

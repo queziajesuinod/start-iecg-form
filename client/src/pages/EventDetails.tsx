@@ -27,6 +27,33 @@ import {
 } from '@/lib/eventsApi';
 import { maskCPForCNPJ, maskPhone, validateCPForCNPJ, validateEmail, removeNonDigits, maskCreditCard, maskCardExpiry, maskCVV } from '@/lib/masks';
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const getMessageFromPayload = (payload: unknown): string | undefined => {
+  if (payload === null || payload === undefined) return undefined;
+  if (typeof payload === 'string') return payload;
+  if (typeof payload === 'number' || typeof payload === 'boolean') return String(payload);
+
+  if (Array.isArray(payload) && payload.length > 0) {
+    return getMessageFromPayload(payload[0]);
+  }
+
+  if (isRecord(payload)) {
+    if ('message' in payload && payload.message) {
+      return getMessageFromPayload(payload.message);
+    }
+    if ('error' in payload && payload.error) {
+      return getMessageFromPayload(payload.error);
+    }
+    if ('errors' in payload && Array.isArray(payload.errors) && payload.errors.length > 0) {
+      return getMessageFromPayload(payload.errors[0]);
+    }
+  }
+
+  return undefined;
+};
+
 export default function EventDetails() {
   const [, setLocation] = useLocation();
   
@@ -130,27 +157,54 @@ export default function EventDetails() {
   };
 
   const handleValidarCupom = async () => {
-    if (!cupomCodigo) return;
-    
-    // Usar o primeiro lote selecionado para validar cupom
-    const primeiroLote = inscritos.find(i => i.batchId)?.batchId;
-    if (!primeiroLote) {
+    const codigoLimpo = cupomCodigo.trim();
+    if (!codigoLimpo) return;
+
+    const loteParaValidar = inscritos.find((i) => i.batchId)?.batchId;
+    if (!loteParaValidar) {
       toast.error('Selecione um lote antes de validar o cupom');
       return;
     }
 
     try {
       setValidandoCupom(true);
-      const resultado = await validarCupom(cupomCodigo, eventId, primeiroLote);
-      if (resultado.valid) {
+      const attendeesWithBatch = inscritos.filter((inscrito) => Boolean(inscrito.batchId));
+      const attendeesDataForValidation = attendeesWithBatch.map((inscrito) => ({
+        batchId: inscrito.batchId as string,
+        data: inscrito.dados || {},
+      }));
+      const attendeesPayload = attendeesWithBatch.map((inscrito) => ({
+        batchId: inscrito.batchId as string,
+      }));
+      const resultado = await validarCupom({
+        code: codigoLimpo,
+        eventId,
+        batchId: loteParaValidar,
+        quantity: attendeesWithBatch.length,
+        attendees: attendeesPayload,
+        attendeesData: attendeesDataForValidation,
+      });
+      if (resultado.valido) {
         setCupomValido(resultado.coupon);
         toast.success('Cupom aplicado com sucesso!');
       } else {
         setCupomValido(null);
-        toast.error(resultado.message || 'Cupom inválido');
+        const resultadoMessage =
+          getMessageFromPayload(resultado.message) || 'Cupom inválido';
+        toast.error(resultadoMessage);
       }
-    } catch (error) {
-      toast.error('Erro ao validar cupom');
+    } catch (error: unknown) {
+      const axiosLikeError = error as {
+        response?: { data?: unknown };
+        message?: unknown;
+      };
+      const errorMessage =
+        getMessageFromPayload(axiosLikeError.response?.data?.message) ||
+        getMessageFromPayload(axiosLikeError.response?.data) ||
+        getMessageFromPayload(axiosLikeError.message) ||
+        'Erro ao validar cupom';
+      setCupomValido(null);
+      toast.error(errorMessage);
     } finally {
       setValidandoCupom(false);
     }
@@ -253,7 +307,7 @@ export default function EventDetails() {
           batchId: i.batchId!,
           data: i.dados
         })),
-        couponCode: cupomValido ? cupomCodigo : undefined,
+        couponCode: cupomValido ? cupomCodigo.trim() : undefined,
         paymentOptionId: formaPagamento,
         paymentData: {
           ...dadosPagamento,
@@ -445,6 +499,8 @@ export default function EventDetails() {
 
   const camposComprador = campos.filter((c) => c.section === 'buyer').sort((a, b) => a.orderIndex - b.orderIndex);
   const camposInscrito = campos.filter((c) => c.section === 'attendee').sort((a, b) => a.orderIndex - b.orderIndex);
+  const hasLoteSelecionado = inscritos.some((i) => Boolean(i.batchId));
+  const cupomDigitado = cupomCodigo.trim();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
@@ -470,78 +526,6 @@ export default function EventDetails() {
                 <div className="flex items-center gap-2 text-sm">
                   <MapPin className="h-4 w-4" />
                   <span>{evento.location}</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Seleção de Lote e Quantidade */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Quantidade de Inscrições</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <p className="text-sm text-blue-900">
-                  <strong>Quantidade de inscrições:</strong> {inscritos.length}
-                </p>
-                <p className="text-xs text-blue-700 mt-1">
-                  Use o botão "Adicionar Inscrito" na seção abaixo para adicionar mais inscrições
-                  {evento.maxPerBuyer && ` (máximo ${evento.maxPerBuyer})`}
-                </p>
-              </div>
-
-              {/* Cupom */}
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <Label>Cupom de Desconto (opcional)</Label>
-                  <Input
-                    value={cupomCodigo}
-                    onChange={(e) => setCupomCodigo(e.target.value.toUpperCase())}
-                    placeholder="Digite o código"
-                  />
-                </div>
-                <Button
-                  type="button"
-                  onClick={handleValidarCupom}
-                  disabled={!cupomCodigo || validandoCupom}
-                  className="mt-auto"
-                >
-                  {validandoCupom ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Aplicar'}
-                </Button>
-              </div>
-
-              {cupomValido && (
-                <Badge variant="secondary" className="w-fit">
-                  <Tag className="h-3 w-3 mr-1" />
-                   Desconto aplicado: {cupomValido.discountType === 'percentage' ? `${cupomValido.discountValue}%` : `R$ ${Number(cupomValido.discountValue).toFixed(2)}`}
-                </Badge>
-              )}
-
-              {/* Resumo */}
-              {inscritos.some(i => i.batchId) && (
-                <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                  <div className="flex justify-between">
-                    <span>Subtotal:</span>
-                    <span>R$ {inscritos.reduce((sum, i) => {
-                      const lote = lotes.find(l => l.id === i.batchId);
-                      return sum + (lote ? Number(lote.price) : 0);
-                    }, 0).toFixed(2)}</span>
-                  </div>
-                  {cupomValido && (
-                    <div className="flex justify-between text-green-600">
-                      <span>Desconto:</span>
-                      <span>- R$ {(inscritos.reduce((sum, i) => {
-                        const lote = lotes.find(l => l.id === i.batchId);
-                        return sum + (lote ? Number(lote.price) : 0);
-                      }, 0) - calcularValorTotal()).toFixed(2)}</span>
-                    </div>
-                  )}
-                  <Separator />
-                  <div className="flex justify-between font-bold text-lg">
-                    <span>Total:</span>
-                    <span>R$ {calcularValorTotal().toFixed(2)}</span>
-                  </div>
                 </div>
               )}
             </CardContent>
@@ -698,13 +682,94 @@ export default function EventDetails() {
                     </AccordionItem>
                   ))}
                 </Accordion>
-              </CardContent>
-            </Card>
-          )}
+            </CardContent>
+          </Card>
+        )}
 
-          {/* Forma de Pagamento */}
-          {formasPagamento.length > 0 && (
-            <Card>
+        {/* Seleção de Lote e Quantidade */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Quantidade de Inscrições</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <p className="text-sm text-blue-900">
+                <strong>Quantidade de inscrições:</strong> {inscritos.length}
+              </p>
+              <p className="text-xs text-blue-700 mt-1">
+                Use o botão "Adicionar Inscrito" na seção acima para adicionar mais inscrições
+                {evento.maxPerBuyer && ` (máximo ${evento.maxPerBuyer})`}
+              </p>
+            </div>
+
+            {/* Cupom */}
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Label>Cupom de Desconto (opcional)</Label>
+                <Input
+                  value={cupomCodigo}
+                  onChange={(e) => {
+                    const value = e.target.value.toUpperCase();
+                    setCupomCodigo(value);
+                    setCupomValido(null);
+                  }}
+                  placeholder="Digite o código"
+                />
+                {!hasLoteSelecionado && cupomDigitado && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Selecione um lote antes de aplicar o cupom para que possamos validar o desconto.
+                  </p>
+                )}
+              </div>
+              <Button
+                type="button"
+                onClick={handleValidarCupom}
+                disabled={!cupomDigitado || validandoCupom || !hasLoteSelecionado}
+                className="mt-auto"
+              >
+                {validandoCupom ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Aplicar'}
+              </Button>
+            </div>
+
+            {cupomValido && (
+              <Badge variant="secondary" className="w-fit">
+                <Tag className="h-3 w-3 mr-1" />
+                 Desconto aplicado: {cupomValido.discountType === 'percentage' ? `${cupomValido.discountValue}%` : `R$ ${Number(cupomValido.discountValue).toFixed(2)}`}
+              </Badge>
+            )}
+
+            {/* Resumo */}
+            {inscritos.some(i => i.batchId) && (
+              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                <div className="flex justify-between">
+                  <span>Subtotal:</span>
+                  <span>R$ {inscritos.reduce((sum, i) => {
+                    const lote = lotes.find(l => l.id === i.batchId);
+                    return sum + (lote ? Number(lote.price) : 0);
+                  }, 0).toFixed(2)}</span>
+                </div>
+                {cupomValido && (
+                  <div className="flex justify-between text-green-600">
+                    <span>Desconto:</span>
+                    <span>- R$ {(inscritos.reduce((sum, i) => {
+                      const lote = lotes.find(l => l.id === i.batchId);
+                      return sum + (lote ? Number(lote.price) : 0);
+                    }, 0) - calcularValorTotal()).toFixed(2)}</span>
+                  </div>
+                )}
+                <Separator />
+                <div className="flex justify-between font-bold text-lg">
+                  <span>Total:</span>
+                  <span>R$ {calcularValorTotal().toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Forma de Pagamento */}
+        {formasPagamento.length > 0 && (
+          <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <CreditCard className="h-5 w-5" />

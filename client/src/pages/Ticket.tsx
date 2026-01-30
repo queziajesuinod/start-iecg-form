@@ -14,7 +14,8 @@ interface Registration {
   event: {
     id: string;
     name: string;
-    eventDate: string;
+    eventDate?: string | null;
+    startDate?: string | null;
     location: string;
   };
   attendees: Array<{
@@ -31,6 +32,76 @@ interface Registration {
   finalPrice: number;
   paymentStatus: string;
 }
+
+const EVENT_DATE_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
+  day: '2-digit',
+  month: 'long',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+};
+
+const BRAZILIAN_DATE_REGEX =
+  /^(\d{2})\/(\d{2})\/(\d{4})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?$/;
+
+const parseEventDateString = (value?: string | null): Date | null => {
+  if (!value) return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const brazilMatch = BRAZILIAN_DATE_REGEX.exec(trimmed);
+  if (brazilMatch) {
+    const [, day, month, year, hour, minute, second] = brazilMatch;
+    const parsed = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour ?? '0'),
+      Number(minute ?? '0'),
+      Number(second ?? '0')
+    );
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  const firstSpaceIndex = trimmed.indexOf(' ');
+  const normalized =
+    firstSpaceIndex > -1 && !trimmed.includes('T')
+      ? `${trimmed.substring(0, firstSpaceIndex)}T${trimmed.substring(
+          firstSpaceIndex + 1
+        )}`
+      : trimmed;
+  const withTimezone = normalized.replace(/\s+([+-]\d{2}:\d{2})$/, '$1');
+
+  const isoParsed = new Date(withTimezone);
+  if (!Number.isNaN(isoParsed.getTime())) {
+    return isoParsed;
+  }
+
+  const fallbackTimestamp = Date.parse(trimmed);
+  if (!Number.isNaN(fallbackTimestamp)) {
+    return new Date(fallbackTimestamp);
+  }
+
+  return null;
+};
+
+const formatEventDateLabel = (event: Registration['event']) => {
+  const rawDate =
+    event.eventDate?.trim() ||
+    event.startDate?.trim() ||
+    '';
+  if (!rawDate) {
+    return 'Data indisponível';
+  }
+  const parsed = parseEventDateString(rawDate);
+  if (parsed) {
+    return parsed.toLocaleDateString('pt-BR', EVENT_DATE_FORMAT_OPTIONS);
+  }
+  return rawDate;
+};
 
 export default function Ticket() {
   const [match, params] = useRoute('/ticket/:orderCode');
@@ -125,14 +196,8 @@ export default function Ticket() {
       pdf.setFont('helvetica', 'normal');
       pdf.text(safeText(registration.event.name), 20, 55);
       
-      const eventDate = new Date(registration.event.eventDate).toLocaleDateString('pt-BR', {
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-      pdf.text(safeText(`Data: ${eventDate}`), 20, 65);
+      const eventDateLabel = formatEventDateLabel(registration.event);
+      pdf.text(safeText(`Data: ${eventDateLabel}`), 20, 65);
       pdf.text(safeText(`Local: ${registration.event.location}`), 20, 75);
       
       pdf.setFontSize(10);
@@ -208,6 +273,8 @@ export default function Ticket() {
     return null;
   }
 
+  const eventDateLabel = formatEventDateLabel(registration.event);
+
   const isPaid = registration.paymentStatus === 'confirmed' || registration.paymentStatus === 'paid';
 
   return (
@@ -233,13 +300,7 @@ export default function Ticket() {
               <h2 className="text-2xl font-bold">{registration.event.name}</h2>
               <div className="flex items-center gap-2 text-sm">
                 <Calendar className="w-4 h-4" />
-                <span>{new Date(registration.event.eventDate).toLocaleDateString('pt-BR', {
-                  day: '2-digit',
-                  month: 'long',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })}</span>
+                <span>{eventDateLabel}</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <MapPin className="w-4 h-4" />
