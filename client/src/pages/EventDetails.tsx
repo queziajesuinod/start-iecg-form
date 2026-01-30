@@ -210,38 +210,38 @@ export default function EventDetails() {
     }
   };
 
-  const calcularValorTotal = () => {
-    // Somar preço de cada inscrito baseado no seu lote específico
-    let total = 0;
-    for (const inscrito of inscritos) {
-      if (inscrito.batchId) {
-        const lote = lotes.find((l) => l.id === inscrito.batchId);
-        if (lote) {
-          total += Number(lote.price);
-        }
-      }
-    }
-    
-    if (total === 0) return 0;
+  const calcularSubtotal = () =>
+    inscritos.reduce((sum, inscrito) => {
+      if (!inscrito.batchId) return sum;
+      const lote = lotes.find((l) => l.id === inscrito.batchId);
+      return sum + (lote ? Number(lote.price) : 0);
+    }, 0);
 
-    if (cupomValido) {
-      if (cupomValido.discountType === 'percentage') {
-        total -= total * (Number(cupomValido.discountValue) / 100);
-      } else {
-        total -= Number(cupomValido.discountValue);
-      }
+  const calcularDesconto = (subtotal: number) => {
+    if (!cupomValido) return 0;
+    if (cupomValido.discountType === 'percentage') {
+      return subtotal * (Number(cupomValido.discountValue) / 100);
     }
+    return Number(cupomValido.discountValue);
+  };
+
+  const calcularValorTotal = (installments = parcelas) => {
+    // Somar preço de cada inscrito baseado no seu lote específico
+    const subtotal = calcularSubtotal();
+    if (subtotal === 0) return 0;
+
+    let total = subtotal - calcularDesconto(subtotal);
 
     // Aplicar juros se houver parcelas
-    if (formaPagamento && parcelas > 1) {
+    if (formaPagamento && installments > 1) {
       const pagamento = formasPagamento.find((f) => f.id === formaPagamento);
       if (pagamento && pagamento.interestRate > 0) {
         if (pagamento.interestType === 'percentage') {
           // Juros percentual por parcela
-          total += total * (Number(pagamento.interestRate) / 100) * (parcelas - 1);
+          total += total * (Number(pagamento.interestRate) / 100) * (installments - 1);
         } else {
           // Juros fixo por parcela
-          total += Number(pagamento.interestRate) * (parcelas - 1);
+          total += Number(pagamento.interestRate) * (installments - 1);
         }
       }
     }
@@ -501,6 +501,10 @@ export default function EventDetails() {
   const camposInscrito = campos.filter((c) => c.section === 'attendee').sort((a, b) => a.orderIndex - b.orderIndex);
   const hasLoteSelecionado = inscritos.some((i) => Boolean(i.batchId));
   const cupomDigitado = cupomCodigo.trim();
+  const subtotal = calcularSubtotal();
+  const desconto = calcularDesconto(subtotal);
+  const totalComJuros = calcularValorTotal();
+  const jurosAplicados = Math.max(0, totalComJuros - Math.max(0, subtotal - desconto));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
@@ -743,25 +747,30 @@ export default function EventDetails() {
               <div className="bg-gray-50 p-4 rounded-lg space-y-2">
                 <div className="flex justify-between">
                   <span>Subtotal:</span>
-                  <span>R$ {inscritos.reduce((sum, i) => {
-                    const lote = lotes.find(l => l.id === i.batchId);
-                    return sum + (lote ? Number(lote.price) : 0);
-                  }, 0).toFixed(2)}</span>
+                  <span>R$ {subtotal.toFixed(2)}</span>
                 </div>
                 {cupomValido && (
                   <div className="flex justify-between text-green-600">
                     <span>Desconto:</span>
-                    <span>- R$ {(inscritos.reduce((sum, i) => {
-                      const lote = lotes.find(l => l.id === i.batchId);
-                      return sum + (lote ? Number(lote.price) : 0);
-                    }, 0) - calcularValorTotal()).toFixed(2)}</span>
+                    <span>- R$ {Math.min(desconto, subtotal).toFixed(2)}</span>
+                  </div>
+                )}
+                {jurosAplicados > 0 && (
+                  <div className="flex justify-between text-orange-600">
+                    <span>Juros:</span>
+                    <span>+ R$ {jurosAplicados.toFixed(2)}</span>
                   </div>
                 )}
                 <Separator />
                 <div className="flex justify-between font-bold text-lg">
                   <span>Total:</span>
-                  <span>R$ {calcularValorTotal().toFixed(2)}</span>
+                  <span>R$ {totalComJuros.toFixed(2)}</span>
                 </div>
+                {formaPagamento && parcelas > 1 && (
+                  <div className="text-sm text-muted-foreground">
+                    Parcelado em {parcelas}x de R$ {(totalComJuros / parcelas).toFixed(2)}
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -779,7 +788,16 @@ export default function EventDetails() {
               <CardContent className="space-y-4">
                 <div>
                   <Label>Selecione a forma de pagamento</Label>
-                  <Select value={formaPagamento} onValueChange={setFormaPagamento}>
+                  <Select
+                    value={formaPagamento}
+                    onValueChange={(value) => {
+                      setFormaPagamento(value);
+                      const selecionada = formasPagamento.find((f) => f.id === value);
+                      if (selecionada?.paymentType !== 'credit_card') {
+                        setParcelas(1);
+                      }
+                    }}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Escolha uma opção" />
                     </SelectTrigger>
@@ -810,7 +828,8 @@ export default function EventDetails() {
                           (_, i) => i + 1
                         ).map((p) => {
                           const pagamento = formasPagamento.find((f) => f.id === formaPagamento);
-                          const valorParcela = calcularValorTotal() / p;
+                          const totalParcelado = calcularValorTotal(p);
+                          const valorParcela = totalParcelado / p;
                           const semJuros = !pagamento || pagamento.interestRate === 0 || p === 1;
                           return (
                             <SelectItem key={p} value={p.toString()}>
