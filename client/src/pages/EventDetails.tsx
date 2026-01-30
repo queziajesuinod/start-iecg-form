@@ -555,6 +555,15 @@ export default function EventDetails() {
     );
   }
 
+  const camposComprador = campos.filter((c) => c.section === 'buyer').sort((a, b) => a.orderIndex - b.orderIndex);
+  const camposInscrito = campos.filter((c) => c.section === 'attendee').sort((a, b) => a.orderIndex - b.orderIndex);
+  const hasLoteSelecionado = inscritos.some((i) => Boolean(i.batchId));
+  const cupomDigitado = cupomCodigo.trim();
+  const subtotal = calcularSubtotal();
+  const desconto = calcularDesconto(subtotal);
+  const totalComJuros = calcularValorTotal();
+  const jurosAplicados = Math.max(0, totalComJuros - Math.max(0, subtotal - desconto));
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
       <div className="container max-w-4xl mx-auto">
@@ -815,18 +824,6 @@ export default function EventDetails() {
                   <span>Total:</span>
                   <span>R$ {totalComJuros.toFixed(2)}</span>
                 </div>
-                {evento?.registrationPaymentMode === 'BALANCE_DUE' && (
-                  <div className="text-sm text-muted-foreground space-y-1">
-                    <div className="flex justify-between">
-                      <span>Pagamento agora:</span>
-                      <span>R$ {pagamentoAgora.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Saldo restante:</span>
-                      <span>R$ {saldoEstimado.toFixed(2)}</span>
-                    </div>
-                  </div>
-                )}
                 {formaPagamento && parcelas > 1 && (
                   <div className="text-sm text-muted-foreground">
                     Parcelado em {parcelas}x de R$ {(totalComJuros / parcelas).toFixed(2)}
