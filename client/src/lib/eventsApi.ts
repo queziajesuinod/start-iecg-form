@@ -111,6 +111,36 @@ export interface RegistrationResponse {
   message: string;
 }
 
+export interface RegistrationPayment {
+  id: string;
+  amount: number;
+  method: 'pix' | 'credit_card' | 'cash';
+  channel: 'ONLINE' | 'OFFLINE';
+  status: 'pending' | 'confirmed' | 'failed' | 'canceled';
+  createdAt: string;
+  notes?: string | null;
+}
+
+export interface RegistrationDetails {
+  id: string;
+  event: {
+    title: string;
+    registrationPaymentMode: 'SINGLE' | 'BALANCE_DUE';
+  };
+  finalPrice: number;
+  paidTotal: number;
+  remaining: number;
+  paymentStatus: 'pending' | 'partial' | 'paid' | 'confirmed';
+  payments: RegistrationPayment[];
+  pixQrCodeBase64?: string | null;
+  checkinQrCode?: string | null;
+}
+
+export interface CreateRegistrationPaymentPayload {
+  amount: number;
+  method: 'pix' | 'credit_card';
+}
+
 // Listar eventos públicos ativos
 export const listarEventosPublicos = async (): Promise<Event[]> => {
   const response = await api.get('/api/public/events');
@@ -165,6 +195,19 @@ export const processarInscricao = async (
 // Consultar inscrição por código
 export const consultarInscricao = async (orderCode: string) => {
   const response = await api.get(`/api/public/events/registrations/${orderCode}`);
+  return response.data;
+};
+
+export const buscarInscricaoPorId = async (id: string): Promise<RegistrationDetails> => {
+  const response = await api.get(`/registrations/${id}`);
+  return response.data;
+};
+
+export const criarPagamentoInscricao = async (
+  id: string,
+  payload: CreateRegistrationPaymentPayload
+): Promise<RegistrationDetails> => {
+  const response = await api.post(`/registrations/${id}/payments`, payload);
   return response.data;
 };
 
