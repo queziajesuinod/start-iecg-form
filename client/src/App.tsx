@@ -22,7 +22,7 @@ function Router() {
       <Route path={"/eventos"} component={EventList} />
       <Route path={"/eventos/:id"} component={EventDetails} />
       <Route path={"/inscricao/:orderCode"} component={RegistrationConfirmation} />
-      <Route path={"/inscricao/:id/visualizacao"} component={RegistrationView} />
+      <Route path={"/inscricao/:orderCode/visualizacao"} component={RegistrationView} />
       <Route path={"/pix-confirmacao"} component={PixConfirmation} />
       <Route path={"/ticket/:orderCode"} component={Ticket} />
       <Route path={"/celulas/atualizar"} component={AtualizarCelula} />

@@ -126,15 +126,29 @@ export interface RegistrationPayment {
 
 export interface RegistrationDetails {
   id: string;
+  orderCode?: string;
   event: {
+    id?: string;
     title: string;
     registrationPaymentMode: 'SINGLE' | 'BALANCE_DUE';
+    minDepositAmount?: string;
+    maxPaymentCount?: number;
   };
   finalPrice: number;
   paidTotal: number;
   remaining: number;
   paymentStatus: 'pending' | 'partial' | 'paid' | 'confirmed';
   payments: RegistrationPayment[];
+  attendees?: Array<{
+    id: string;
+    attendeeNumber: number;
+    attendeeData: Record<string, string>;
+    batch?: {
+      id: string;
+      name: string;
+      price: string;
+    } | null;
+  }>;
   pixQrCodeBase64?: string | null;
   checkinQrCode?: string | null;
 }
@@ -142,6 +156,7 @@ export interface RegistrationDetails {
 export interface CreateRegistrationPaymentPayload {
   amount: number;
   method: 'pix' | 'credit_card';
+  paymentOptionId: string;
 }
 
 // Listar eventos públicos ativos
@@ -210,7 +225,7 @@ export const criarPagamentoInscricao = async (
   id: string,
   payload: CreateRegistrationPaymentPayload
 ): Promise<RegistrationDetails> => {
-  const response = await api.post(`/registrations/${id}/payments`, payload);
+  const response = await api.post(`/api/public/events/registrations/${id}/payments`, payload);
   return response.data;
 };
 

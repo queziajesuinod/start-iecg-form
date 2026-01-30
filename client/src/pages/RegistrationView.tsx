@@ -10,8 +10,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import {
-  buscarInscricaoPorId,
+  buscarFormasPagamento,
+  consultarInscricao,
   criarPagamentoInscricao,
+  type PaymentOption,
   type RegistrationDetails,
   type RegistrationPayment,
 } from '@/lib/eventsApi';
@@ -80,21 +82,24 @@ const statusLabel: Record<RegistrationPayment['status'], string> = {
 };
 
 export default function RegistrationView() {
-  const [, params] = useRoute('/inscricao/:id/visualizacao');
+  const [, params] = useRoute('/inscricao/:orderCode/visualizacao');
   const [, setLocation] = useLocation();
-  const registrationId = params?.id;
+  const orderCode = params?.orderCode;
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [registration, setRegistration] = useState<RegistrationDetails | null>(null);
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<'pix' | 'credit_card'>('pix');
+  const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([]);
+  const [selectedPaymentOptionId, setSelectedPaymentOptionId] = useState('');
+  const [loadingPaymentOptions, setLoadingPaymentOptions] = useState(false);
 
   const carregarInscricao = async () => {
-    if (!registrationId) return;
+    if (!orderCode) return;
     try {
       setLoading(true);
-      const data = await buscarInscricaoPorId(registrationId);
+      const data = await consultarInscricao(orderCode);
       setRegistration(data);
     } catch (error) {
       console.error('Erro ao carregar inscrição:', error);
@@ -105,13 +110,45 @@ export default function RegistrationView() {
   };
 
   useEffect(() => {
-    if (!registrationId) return;
+    if (!orderCode) return;
     carregarInscricao();
-  }, [registrationId]);
+  }, [orderCode]);
+
+  useEffect(() => {
+    const eventId = registration?.event?.id;
+    if (!eventId) {
+      setPaymentOptions([]);
+      setSelectedPaymentOptionId('');
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setLoadingPaymentOptions(true);
+        const options = await buscarFormasPagamento(eventId);
+        if (cancelled) return;
+        const activeOptions = options.filter((opt) => opt.isActive);
+        setPaymentOptions(activeOptions);
+      } catch (error) {
+        console.error('Erro ao carregar formas de pagamento:', error);
+      } finally {
+        if (!cancelled) {
+          setLoadingPaymentOptions(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [registration?.event?.id]);
 
   const sortedPayments = useMemo(() => {
     if (!registration) return [];
-    return [...registration.payments].sort((a, b) =>
+    const payments = Array.isArray(registration.payments) ? registration.payments : [];
+    return [...payments].sort((a, b) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   }, [registration]);
@@ -122,11 +159,32 @@ export default function RegistrationView() {
       registration.remaining <= 0
     : false;
 
+  const eventPaymentMode = registration?.event?.registrationPaymentMode;
+  const isBalanceDueMode = eventPaymentMode === 'BALANCE_DUE';
+  const eventTitle = registration?.event?.title ?? 'Evento';
+  const paymentModeLabel = eventPaymentMode
+    ? isBalanceDueMode
+      ? 'Saldo a quitar'
+      : 'Pagamento único'
+    : 'Modo de pagamento indisponível';
+
   const canPay =
     registration &&
-    registration.event.registrationPaymentMode === 'BALANCE_DUE' &&
+    isBalanceDueMode &&
     !isPaid &&
     registration.remaining > 0;
+
+  const optionsForMethod = paymentOptions.filter((option) => option.paymentType === method);
+
+  useEffect(() => {
+    if (!optionsForMethod.length) {
+      setSelectedPaymentOptionId('');
+      return;
+    }
+    if (!optionsForMethod.some((option) => option.id === selectedPaymentOptionId)) {
+      setSelectedPaymentOptionId(optionsForMethod[0].id);
+    }
+  }, [method, optionsForMethod]);
 
   const handleSubmitPayment = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -143,11 +201,23 @@ export default function RegistrationView() {
       return;
     }
 
+    if (!selectedPaymentOptionId) {
+      toast.error('Selecione uma opção de pagamento ativa.');
+      return;
+    }
+
+    const selectedPaymentOption = paymentOptions.find((option) => option.id === selectedPaymentOptionId);
+    if (!selectedPaymentOption) {
+      toast.error('Opção de pagamento inválida.');
+      return;
+    }
+
     try {
       setSubmitting(true);
       const updated = await criarPagamentoInscricao(registration.id, {
         amount: parsedAmount,
         method,
+        paymentOptionId: selectedPaymentOption.id,
       });
       setRegistration(updated);
       setAmount('');
@@ -160,7 +230,7 @@ export default function RegistrationView() {
     }
   };
 
-  if (!registrationId) {
+  if (!orderCode) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <Card className="max-w-md w-full">
@@ -224,18 +294,13 @@ export default function RegistrationView() {
               </Badge>
             </CardTitle>
             <CardDescription>
-              Evento: <span className="font-medium">{registration.event.title}</span>
+              Evento: <span className="font-medium">{eventTitle}</span>
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
               <span>ID da inscrição: {registration.id}</span>
-              <span>
-                Modo de pagamento:{' '}
-                {registration.event.registrationPaymentMode === 'BALANCE_DUE'
-                  ? 'Saldo a quitar'
-                  : 'Pagamento único'}
-              </span>
+              <span>Modo de pagamento: {paymentModeLabel}</span>
             </div>
           </CardContent>
         </Card>
@@ -265,6 +330,45 @@ export default function RegistrationView() {
             </div>
           </CardContent>
         </Card>
+
+        {registration.attendees && registration.attendees.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Dados dos Inscritos</CardTitle>
+              <CardDescription>verifique o nome e os dados cadastrados.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {registration.attendees.map((attendee, index) => {
+                const entries = Object.entries(attendee.attendeeData);
+                return (
+                  <div key={attendee.id} className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-semibold">
+                        Inscrito {attendee.attendeeNumber || index + 1}
+                      </span>
+                      {attendee.batch?.name && (
+                        <Badge variant="secondary" className="text-xs">
+                          Lote: {attendee.batch.name}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {entries.map(([field, value]) => (
+                        <div key={`${attendee.id}-${field}`} className="text-sm space-y-1">
+                          <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                            {field}
+                          </p>
+                          <p className="font-medium">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {index < registration.attendees!.length - 1 && <Separator />}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
 
         {registration.pixQrCodeBase64 && !isPaid && (
           <Card>
@@ -351,9 +455,60 @@ export default function RegistrationView() {
                         <SelectItem value="credit_card">Cartão</SelectItem>
                       </SelectContent>
                     </Select>
+                    <div className="space-y-1">
+                      <Label htmlFor="payment-option">Opção ativa</Label>
+                      <Select
+                        id="payment-option"
+                        value={selectedPaymentOptionId}
+                        onValueChange={(value) => setSelectedPaymentOptionId(value)}
+                        disabled={loadingPaymentOptions || !optionsForMethod.length}
+                      >
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={
+                              loadingPaymentOptions
+                                ? 'Carregando opções...'
+                                : optionsForMethod.length
+                                ? 'Selecione uma opção'
+                                : 'Nenhuma opção disponível'
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {optionsForMethod.map((option) => {
+                            const methodLabel = option.paymentType === 'pix' ? 'PIX' : 'Cartão';
+                            const interestText =
+                              option.interestRate > 0
+                                ? option.interestType === 'percentage'
+                                  ? `${option.interestRate}% ao mês`
+                                  : `R$ ${option.interestRate.toFixed(2)} fixo`
+                                : 'Sem juros';
+                            return (
+                              <SelectItem key={option.id} value={option.id}>
+                                {methodLabel} — {interestText}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                      {!loadingPaymentOptions && !optionsForMethod.length && (
+                        <p className="text-xs text-destructive">
+                          Nenhuma forma ativa encontrada para {method === 'pix' ? 'PIX' : 'Cartão'}.
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <Button type="submit" disabled={submitting} className="w-full">
+                <Button
+                  type="submit"
+                  disabled={
+                    submitting ||
+                    loadingPaymentOptions ||
+                    !optionsForMethod.length ||
+                    !selectedPaymentOptionId
+                  }
+                  className="w-full"
+                >
                   {submitting ? (
                     <span className="flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
