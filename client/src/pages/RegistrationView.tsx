@@ -111,8 +111,7 @@ export default function RegistrationView() {
 
   const sortedPayments = useMemo(() => {
     if (!registration) return [];
-    const payments = Array.isArray(registration.payments) ? registration.payments : [];
-    return [...payments].sort((a, b) =>
+    return [...registration.payments].sort((a, b) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   }, [registration]);
