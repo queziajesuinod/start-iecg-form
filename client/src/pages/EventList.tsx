@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
+import { AspectRatio } from '@radix-ui/react-aspect-ratio';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, MapPin, Users, Loader2 } from 'lucide-react';
-import { listarEventosPublicos, type Event } from '@/lib/eventsApi';
+import { listarEventosPublicos, listarLotesPublicos, type Event } from '@/lib/eventsApi';
+import { hasActiveBatchNow } from '@/lib/eventUtils';
 
 export default function EventList() {
   const [, setLocation] = useLocation();
   const [eventos, setEventos] = useState<Event[]>([]);
+  const [batchAvailability, setBatchAvailability] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,12 +25,42 @@ export default function EventList() {
       setError(null);
       const data = await listarEventosPublicos();
       setEventos(data);
+      await verificarDisponibilidadeLotes(data);
     } catch (err) {
       console.error('Erro ao carregar eventos:', err);
       setError('Erro ao carregar eventos. Tente novamente mais tarde.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const verificarDisponibilidadeLotes = async (eventos: Event[]) => {
+    if (!eventos.length) {
+      setBatchAvailability({});
+      return;
+    }
+
+    const hoje = new Date();
+    const availabilityEntries = await Promise.all(
+      eventos.map(async (evento) => {
+        try {
+          const lotes = await listarLotesPublicos(evento.id);
+          return {
+            id: evento.id,
+            hasActiveBatch: hasActiveBatchNow(lotes, hoje),
+          };
+        } catch (batchError) {
+          console.error('Erro ao verificar lotes do evento:', evento.id, batchError);
+          return { id: evento.id, hasActiveBatch: false };
+        }
+      })
+    );
+
+    const availabilityByEvent: Record<string, boolean> = {};
+    availabilityEntries.forEach(({ id, hasActiveBatch }) => {
+      availabilityByEvent[id] = hasActiveBatch;
+    });
+    setBatchAvailability(availabilityByEvent);
   };
 
   const formatarData = (data: string) => {
@@ -97,23 +130,30 @@ export default function EventList() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {eventos.map((evento) => {
-              const vagasDisponiveis = calcularVagasDisponiveis(evento);
-              const esgotado = vagasDisponiveis !== null && vagasDisponiveis <= 0;
+                  const vagasDisponiveis = calcularVagasDisponiveis(evento);
+                  const esgotado = vagasDisponiveis !== null && vagasDisponiveis <= 0;
+                  const possuiLoteAtivo = batchAvailability[evento.id];
+                  const podeIrDetalhes = !esgotado && (possuiLoteAtivo ?? true);
+                  const botaoLabel = esgotado
+                    ? 'Esgotado'
+                    : possuiLoteAtivo === false
+                    ? 'Encerrado'
+                    : 'Ver Detalhes';
 
-              return (
-                <Card
-                  key={evento.id}
-                  className="hover:shadow-xl transition-shadow duration-300 flex flex-col"
-                >
+                  return (
+                    <Card
+                      key={evento.id}
+                      className="hover:shadow-xl transition-shadow duration-300 flex flex-col pt-0"
+                    >
                   {/* Imagem do Evento */}
                   {evento.imageUrl && (
-                    <div className="h-48 overflow-hidden rounded-t-lg">
+                    <AspectRatio ratio={16 / 9} className="overflow-hidden rounded-t-lg">
                       <img
                         src={evento.imageUrl}
                         alt={evento.title}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
                       />
-                    </div>
+                    </AspectRatio>
                   )}
 
                   <CardHeader>
@@ -145,26 +185,15 @@ export default function EventList() {
                       </div>
                     )}
 
-                    {/* Vagas */}
-                    {vagasDisponiveis !== null && (
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Users className="h-4 w-4" />
-                        <span>
-                          {vagasDisponiveis > 0
-                            ? `${vagasDisponiveis} vagas disponíveis`
-                            : 'Vagas esgotadas'}
-                        </span>
-                      </div>
-                    )}
                   </CardContent>
 
                   <CardFooter>
                     <Button
                       onClick={() => setLocation(`/eventos/${evento.id}`)}
-                      disabled={esgotado}
+                      disabled={!podeIrDetalhes}
                       className="w-full"
                     >
-                      {esgotado ? 'Esgotado' : 'Ver Detalhes'}
+                      {botaoLabel}
                     </Button>
                   </CardFooter>
                 </Card>

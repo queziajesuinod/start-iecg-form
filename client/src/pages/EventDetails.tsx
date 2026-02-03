@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useRoute, useLocation } from 'wouter';
+import { useLocation } from 'wouter';
+import { AspectRatio } from '@radix-ui/react-aspect-ratio';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -20,12 +22,15 @@ import {
   validarCupom,
   processarInscricao,
   buscarFormasPagamento,
+  consultarInscricao,
   type Event,
   type EventBatch,
   type FormField,
   type PaymentOption,
+  type RegistrationResponse,
 } from '@/lib/eventsApi';
 import { maskCPForCNPJ, maskPhone, validateCPForCNPJ, validateEmail, removeNonDigits, maskCreditCard, maskCardExpiry, maskCVV } from '@/lib/masks';
+import { isBatchActiveNow } from '@/lib/eventUtils';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -89,6 +94,76 @@ export default function EventDetails() {
     expirationDate: '',
     securityCode: '',
   });
+  const lotesAtivosNoRange = lotes.filter((lote) => isBatchActiveNow(lote));
+  const findPaymentOption = (value?: string) =>
+    formasPagamento.find((forma) => forma.id.toString() === value);
+
+  const hasLotAvailable = lotesAtivosNoRange.length > 0;
+  const paymentUnavailable = !hasLotAvailable || formasPagamento.length === 0;
+  const [cardDeniedModalOpen, setCardDeniedModalOpen] = useState(false);
+  const [cardDeniedMessage, setCardDeniedMessage] = useState('');
+  const PAYMENT_STATUS_MESSAGES: Record<string, string> = {
+    Authorized: 'Transação autorizada pelo emissor. Aguardar confirmação final.',
+    Paid: 'Pagamento confirmado pela Cielo.',
+    Confirmed: 'Pagamento confirmado.',
+    Denied: 'Transação negada pelo emissor.',
+    DeniedByCielo: 'Transação negada pela Cielo.',
+    Aborted: 'Pagamento abortado.',
+    NotFinished: 'Pagamento não foi finalizado.',
+    Waiting: 'Pagamento pendente de confirmação.',
+    Captured: 'Pagamento capturado com sucesso.',
+    Failed: 'Pagamento recusado.',
+    Canceled: 'Pagamento cancelado.',
+  };
+
+  const showPaymentStatusToast = (status?: string, fallback?: string) => {
+    const normalized = status
+      ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()
+      : '';
+    const message =
+      PAYMENT_STATUS_MESSAGES[status || normalized] ||
+      fallback ||
+      'Status do pagamento atualizado.';
+
+    const key = (status || normalized).toLowerCase();
+    if (['paid', 'confirmed', 'captured'].includes(key)) {
+      toast.success(message);
+    } else if (['denied', 'deniedbycielo', 'failed', 'canceled', 'aborted'].includes(key)) {
+      toast.error(message);
+    } else {
+      toast.info(message);
+    }
+  };
+
+  const verificarPagamentoCartao = async (
+    orderCode: string,
+    payload: RegistrationResponse
+  ) => {
+    try {
+      const registration = await consultarInscricao(orderCode);
+      const cardPayment = registration.payments?.find((payment) => payment.method === 'credit_card');
+      const status = cardPayment?.status || registration.paymentStatus;
+      if (status === 'confirmed' || status === 'paid') {
+        showPaymentStatusToast(status, registration.message);
+        setLocation(`/ticket/${orderCode}`);
+        return;
+      }
+
+      if (['failed', 'canceled', 'denied'].includes(status || '')) {
+        const backendMessage =
+          cardPayment?.notes || payload.message || 'Não autorizado a compra pelo cartão de crédito.';
+        showPaymentStatusToast(status, backendMessage);
+        setCardDeniedMessage(backendMessage);
+        setCardDeniedModalOpen(true);
+        return;
+      }
+
+      showPaymentStatusToast(status, registration.message);
+    } catch (error) {
+      console.error('Erro ao verificar pagamento do cartão:', error);
+      toast.error('Não foi possível validar o status do pagamento.');
+    }
+  };
 
   useEffect(() => {
     carregarDados();
@@ -236,7 +311,7 @@ export default function EventDetails() {
 
     // Aplicar juros se houver parcelas
     if (formaPagamento && installments > 1) {
-      const pagamento = formasPagamento.find((f) => f.id === formaPagamento);
+    const pagamento = findPaymentOption(formaPagamento);
       if (pagamento && pagamento.interestRate > 0) {
         if (pagamento.interestType === 'percentage') {
           // Juros percentual por parcela
@@ -284,7 +359,7 @@ export default function EventDetails() {
     }
 
     // Validar dados de pagamento apenas para cartão de crédito
-    const formaSelecionada = formasPagamento.find((f) => f.id === formaPagamento);
+    const formaSelecionada = findPaymentOption(formaPagamento);
     if (formaSelecionada?.paymentType === 'credit_card') {
       if (!dadosPagamento.cardNumber || !dadosPagamento.cardHolder || 
           !dadosPagamento.expirationDate || !dadosPagamento.securityCode) {
@@ -312,6 +387,11 @@ export default function EventDetails() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!hasLotAvailable) {
+      toast.error('Inscrições encerradas para este evento.');
+      return;
+    }
+
     if (!validarFormulario()) return;
 
     try {
@@ -335,35 +415,33 @@ export default function EventDetails() {
         },
       });
 
-      if (resultado.sucesso) {
-        toast.success('Inscrição realizada com sucesso!');
-        
-        // Verificar tipo de pagamento
-        const formaPagamentoSelecionada = formasPagamento.find(f => f.id === formaPagamento);
-        console.log('=== DEBUG REDIRECIONAMENTO ==>');
-        console.log('formaPagamento (ID selecionado):', formaPagamento);
-        console.log('formasPagamento (array completo):', formasPagamento);
-        console.log('formaPagamentoSelecionada:', formaPagamentoSelecionada);
-        console.log('paymentType:', formaPagamentoSelecionada?.paymentType);
-        console.log('resultado.pagamento:', resultado.pagamento);
-        console.log('qrCodeString:', resultado.pagamento?.qrCodeString);
-        console.log('qrCodeBase64:', resultado.pagamento?.qrCodeBase64);
-        
-        if (formaPagamentoSelecionada?.paymentType === 'pix') {
-          console.log('ENTRANDO NO IF DO PIX');
-          // Redirecionar para página de confirmação PIX
-          const pixCode = resultado.pagamento?.qrCodeString || '';
-          const qrCode = resultado.pagamento?.qrCodeBase64 || '';
-          console.log('Redirecionando para:', `/pix-confirmacao?orderCode=${resultado.orderCode}`);
-          setLocation(`/pix-confirmacao?orderCode=${resultado.orderCode}&pixCode=${encodeURIComponent(pixCode)}&qrCode=${encodeURIComponent(qrCode)}`);
-        } else {
-          console.log('ENTRANDO NO ELSE (CARTÃO)');
-          // Para cartão, redirecionar direto para o ticket
-          console.log('Redirecionando para:', `/ticket/${resultado.orderCode}`);
-          setLocation(`/ticket/${resultado.orderCode}`);
-        }
+    if (resultado.sucesso) {
+      const formaPagamentoSelecionada = findPaymentOption(formaPagamento);
+      console.log('=== DEBUG REDIRECIONAMENTO ==>');
+      console.log('formaPagamento (ID selecionado):', formaPagamento);
+      console.log('formasPagamento (array completo):', formasPagamento);
+      console.log('formaPagamentoSelecionada:', formaPagamentoSelecionada);
+      console.log('paymentType:', formaPagamentoSelecionada?.paymentType);
+      console.log('resultado.pagamento:', resultado.pagamento);
+      console.log('qrCodeString:', resultado.pagamento?.qrCodeString);
+      console.log('qrCodeBase64:', resultado.pagamento?.qrCodeBase64);
+
+      if (formaPagamentoSelecionada?.paymentType === 'pix') {
+        console.log('ENTRANDO NO IF DO PIX');
+        const pixCode = resultado.pagamento?.qrCodeString || '';
+        const qrCode = resultado.pagamento?.qrCodeBase64 || '';
+        console.log('Redirecionando para:', `/pix-confirmacao?orderCode=${resultado.orderCode}`);
+        setLocation(
+          `/pix-confirmacao?orderCode=${resultado.orderCode}&pixCode=${encodeURIComponent(
+            pixCode
+          )}&qrCode=${encodeURIComponent(qrCode)}`
+        );
+      } else {
+        console.log('ENTRANDO NO ELSE (CARTÃO)');
+        await verificarPagamentoCartao(resultado.orderCode, resultado);
       }
-    } catch (error: any) {
+    }
+  } catch (error: any) {
       console.error('Erro ao processar inscrição:', error);
       toast.error(error.response?.data?.message || 'Erro ao processar inscrição');
     } finally {
@@ -505,6 +583,7 @@ export default function EventDetails() {
   const desconto = calcularDesconto(subtotal);
   const totalComJuros = calcularValorTotal();
   const jurosAplicados = Math.max(0, totalComJuros - Math.max(0, subtotal - desconto));
+  const selectedPaymentOption = findPaymentOption(formaPagamento);
   const valorPagamentoNumero = parseValorPagamento();
   const pagamentoAgora =
     evento?.registrationPaymentMode === 'BALANCE_DUE' && valorPagamentoNumero > 0
@@ -558,15 +637,24 @@ export default function EventDetails() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
       <div className="container max-w-4xl mx-auto">
-        <Button variant="ghost" onClick={() => setLocation('/')} className="mb-6">
+        <Button variant="ghost" onClick={() => setLocation('/eventos')} className="mb-6">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Voltar
         </Button>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Informações do Evento */}
-          <Card>
-            <CardHeader>
+          <Card className="overflow-hidden pt-0">
+            {evento.imageUrl && (
+              <AspectRatio ratio={16 / 9} className="w-full bg-slate-100">
+                <img
+                  src={evento.imageUrl}
+                  alt={evento.title}
+                  className="w-full h-full object-cover"
+                />
+              </AspectRatio>
+            )}
+            <CardHeader className="pt-6">
               <CardTitle className="text-3xl">{evento.title}</CardTitle>
               <CardDescription>{evento.description}</CardDescription>
             </CardHeader>
@@ -584,6 +672,11 @@ export default function EventDetails() {
             </CardContent>
           </Card>
 
+          {!hasLotAvailable && (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-center text-sm font-semibold text-destructive">
+              Inscrições encerradas — nenhum lote ativo dentro do período vigente.
+            </div>
+          )}
           {/* Dados do Comprador */}
           {camposComprador.length > 0 && (
             <Card>
@@ -622,7 +715,7 @@ export default function EventDetails() {
                     variant="outline"
                     size="sm"
                     onClick={adicionarInscrito}
-                    disabled={inscritos.length >= (evento?.maxPerBuyer || 10)}
+                    disabled={!hasLotAvailable || inscritos.length >= (evento?.maxPerBuyer || 10)}
                   >
                     <Plus className="h-4 w-4 mr-2" />
                     Adicionar Inscrito
@@ -671,12 +764,13 @@ export default function EventDetails() {
                                   i.id === inscrito.id ? { ...i, batchId: v } : i
                                 ));
                               }}
+                              disabled={!lotesAtivosNoRange.length}
                             >
                               <SelectTrigger id={`lote-${inscrito.id}`}>
                                 <SelectValue placeholder="Selecione o lote" />
                               </SelectTrigger>
                               <SelectContent>
-                                {lotes.map((lote) => {
+                                {lotesAtivosNoRange.map((lote) => {
                                   const esgotado = lote.vagasDisponiveis !== null && lote.vagasDisponiveis <= 0;
                                   return (
                                     <SelectItem 
@@ -685,16 +779,16 @@ export default function EventDetails() {
                                       disabled={esgotado}
                                     >
                                       {lote.name} - R$ {Number(lote.price).toFixed(2)}
-                                      {lote.vagasDisponiveis !== null && (
-                                        <span className="ml-2 text-xs">
-                                          {esgotado ? '(Esgotado)' : `(${lote.vagasDisponiveis} vagas)`}
-                                        </span>
-                                      )}
                                     </SelectItem>
                                   );
                                 })}
                               </SelectContent>
                             </Select>
+                            {!lotesAtivosNoRange.length && (
+                              <p className="text-xs text-red-600 mt-1">
+                                Nenhum lote ativo dentro da data vigente.
+                              </p>
+                            )}
                           </div>
                           
                           {camposInscrito.map((campo) => (
@@ -826,22 +920,27 @@ export default function EventDetails() {
         </Card>
 
         {/* Forma de Pagamento */}
-        {formasPagamento.length > 0 && (
-          <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CreditCard className="h-5 w-5" />
-                  Forma de Pagamento
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              Forma de Pagamento
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {formasPagamento.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Nenhuma forma de pagamento ativa foi encontrada para este evento.
+              </p>
+            ) : (
+              <>
                 <div>
                   <Label>Selecione a forma de pagamento</Label>
                   <Select
                     value={formaPagamento}
                     onValueChange={(value) => {
                       setFormaPagamento(value);
-                      const selecionada = formasPagamento.find((f) => f.id === value);
+                      const selecionada = findPaymentOption(value);
                       if (selecionada?.paymentType !== 'credit_card') {
                         setParcelas(1);
                       }
@@ -912,7 +1011,7 @@ export default function EventDetails() {
                 )}
                 
                 {/* Parcelas (apenas para cartão) */}
-                {formaPagamento && formasPagamento.find((f) => f.id === formaPagamento)?.paymentType === 'credit_card' && (
+                {formaPagamento && selectedPaymentOption?.paymentType === 'credit_card' && (
                   <div>
                     <Label>Número de Parcelas</Label>
                     <Select value={parcelas.toString()} onValueChange={(v) => setParcelas(parseInt(v))}>
@@ -921,10 +1020,10 @@ export default function EventDetails() {
                       </SelectTrigger>
                       <SelectContent>
                         {Array.from(
-                          { length: formasPagamento.find((f) => f.id === formaPagamento)?.maxInstallments || 1 },
+                          { length: selectedPaymentOption?.maxInstallments || 1 },
                           (_, i) => i + 1
                         ).map((p) => {
-                          const pagamento = formasPagamento.find((f) => f.id === formaPagamento);
+                          const pagamento = selectedPaymentOption;
                           const totalParcelado = calcularValorTotal(p);
                           const valorParcela = totalParcelado / p;
                           const semJuros = !pagamento || pagamento.interestRate === 0 || p === 1;
@@ -941,7 +1040,7 @@ export default function EventDetails() {
                 )}
                 
                 {/* Dados do Cartão (apenas para cartão) */}
-                {formaPagamento && formasPagamento.find((f) => f.id === formaPagamento)?.paymentType === 'credit_card' && (
+                {formaPagamento && selectedPaymentOption?.paymentType === 'credit_card' && (
                   <div className="space-y-4 pt-4 border-t">
                     <h4 className="font-medium">Dados do Cartão</h4>
                     <div>
@@ -999,22 +1098,25 @@ export default function EventDetails() {
                 )}
                 
                 {/* Mensagem para PIX/Boleto */}
-                {formaPagamento && ['pix', 'boleto'].includes(formasPagamento.find((f) => f.id === formaPagamento)?.paymentType || '') && (
+                {formaPagamento && ['pix', 'boleto'].includes(selectedPaymentOption?.paymentType || '') && (
                   <div className="p-4 bg-blue-50 rounded-lg">
                     <p className="text-sm text-blue-900">
-                      {formasPagamento.find((f) => f.id === formaPagamento)?.paymentType === 'pix'
+                      {selectedPaymentOption?.paymentType === 'pix'
                         ? 'Após finalizar a inscrição, você receberá o QR Code do PIX para pagamento.'
                         : 'Após finalizar a inscrição, você receberá o boleto para pagamento.'}
                     </p>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          )}
+              </>
+            )}
+          </CardContent>
+        </Card>
 
           {/* Botão de Envio */}
-          <Button type="submit" size="lg" className="w-full" disabled={submitting}>
-            {submitting ? (
+          <Button type="submit" size="lg" className="w-full" disabled={submitting || paymentUnavailable}>
+            {paymentUnavailable ? (
+              !hasLotAvailable ? 'ENCERRADO' : 'Forma de pagamento indisponível'
+            ) : submitting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 Processando...
@@ -1024,6 +1126,21 @@ export default function EventDetails() {
             )}
           </Button>
         </form>
+        <Dialog open={cardDeniedModalOpen} onOpenChange={setCardDeniedModalOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Pagamento não autorizado</DialogTitle>
+              <DialogDescription>
+                {cardDeniedMessage || 'Não foi possível autorizar a compra pelo cartão de crédito.'}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button onClick={() => setCardDeniedModalOpen(false)} className="w-full">
+                Fechar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

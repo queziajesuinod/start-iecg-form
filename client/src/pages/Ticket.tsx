@@ -103,6 +103,27 @@ const formatEventDateLabel = (event: Registration['event']) => {
   return rawDate;
 };
 
+const formatEventDateRange = (event: Registration['event']) => {
+  const startDate = parseEventDateString(event.startDate);
+  const endDate = parseEventDateString(event.eventDate);
+
+  if (startDate && endDate) {
+    const start = startDate.toLocaleDateString('pt-BR');
+    const end = endDate.toLocaleDateString('pt-BR');
+    return `${start} a ${end}`;
+  }
+
+  if (startDate) {
+    return startDate.toLocaleDateString('pt-BR');
+  }
+
+  if (endDate) {
+    return endDate.toLocaleDateString('pt-BR');
+  }
+
+  return formatEventDateLabel(event);
+};
+
 export default function Ticket() {
   const [match, params] = useRoute('/ticket/:orderCode');
   const [, navigate] = useLocation();
@@ -110,6 +131,7 @@ export default function Ticket() {
   const [loading, setLoading] = useState(true);
   const [registration, setRegistration] = useState<Registration | null>(null);
   const [attendeeQRCodes, setAttendeeQRCodes] = useState<Record<string, string>>({});
+  const [eventImageDataUrl, setEventImageDataUrl] = useState<string | null>(null);
 
   const loadRegistration = useCallback(async (orderCode: string) => {
     try {
@@ -156,6 +178,37 @@ export default function Ticket() {
   }, [navigate, toast]);
 
   useEffect(() => {
+    const imageUrl = registration?.event?.imageUrl;
+    if (!imageUrl) {
+      setEventImageDataUrl(null);
+      return;
+    }
+
+    let canceled = false;
+    (async () => {
+      try {
+        const res = await fetch(imageUrl);
+        if (!res.ok || canceled) return;
+        const blob = await res.blob();
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (canceled) return;
+          if (typeof reader.result === 'string') {
+            setEventImageDataUrl(reader.result);
+          }
+        };
+        reader.readAsDataURL(blob);
+      } catch {
+        setEventImageDataUrl(null);
+      }
+    })();
+
+    return () => {
+      canceled = true;
+    };
+  }, [registration?.event?.imageUrl]);
+
+  useEffect(() => {
     if (!match || !params?.orderCode) {
       navigate('/');
       return;
@@ -173,79 +226,87 @@ export default function Ticket() {
       const pdf = new jsPDF();
       const pageWidth = pdf.internal.pageSize.getWidth();
       
-      // Título
-      pdf.setFontSize(20);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('Ticket de Inscrição', pageWidth / 2, 20, { align: 'center' });
-      
-      // Código da inscrição
-      pdf.setFontSize(12);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(safeText(`Código: ${registration.orderCode}`), pageWidth / 2, 30, { align: 'center' });
-      
-      // Linha separadora
-      pdf.setLineWidth(0.5);
-      pdf.line(20, 35, pageWidth - 20, 35);
-      
-      // Informações do evento
-      pdf.setFontSize(16);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('Evento', 20, 45);
-      
-      pdf.setFontSize(12);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(safeText(registration.event.name), 20, 55);
-      
-      const eventDateLabel = formatEventDateLabel(registration.event);
-      pdf.text(safeText(`Data: ${eventDateLabel}`), 20, 65);
-      pdf.text(safeText(`Local: ${registration.event.location}`), 20, 75);
-      
-      pdf.setFontSize(10);
-      pdf.text(
-        'Apresente o QR Code correspondente a cada inscrito na entrada do evento',
-        pageWidth / 2,
-        175,
-        {
-          align: 'center',
-        }
-      );
-      
-      let yPos = 190;
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('Inscritos', 20, yPos);
-
-      yPos += 10;
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
+      const dateRangeLabel = formatEventDateRange(registration.event);
+      const sectionHeight = 120;
+      let yOffset = 20;
+      const circleSize = 60;
+      const qrSize = 50;
 
       registration.attendees.forEach((attendee, index) => {
-        const nome = attendee.attendeeData.nome_do_inscrito || attendee.attendeeData.nome || `Inscrito ${index + 1}`;
-        const attendeeQr = attendeeQRCodes[attendee.id];
-        const text = `• ${safeText(nome)} - ${safeText(attendee.batch.name)}`;
-        if (attendeeQr) {
-          const qrSize = 40;
-          pdf.addImage(attendeeQr, 'PNG', 25, yPos, qrSize, qrSize);
-          pdf.text(text, 25 + qrSize + 8, yPos + qrSize / 2);
-          yPos += qrSize + 8;
-        } else {
-          pdf.text(text, 25, yPos);
-          yPos += 8;
+        if (yOffset + sectionHeight > pdf.internal.pageSize.getHeight() - 30) {
+          pdf.addPage();
+          yOffset = 20;
         }
+
+        const circleX = 20;
+        const circleY = yOffset;
+        if (eventImageDataUrl) {
+          pdf.setDrawColor(0);
+          pdf.addImage(eventImageDataUrl, 'PNG', circleX, circleY, circleSize, circleSize);
+        } else {
+          pdf.setFillColor(244, 244, 244);
+          pdf.setDrawColor(220);
+          pdf.circle(circleX + circleSize / 2, circleY + circleSize / 2, circleSize / 2, 'FD');
+          pdf.setFontSize(18);
+          pdf.setFont('helvetica', 'bold');
+          const initial = (registration.event.name?.charAt(0) || '?').toUpperCase();
+          pdf.text(initial, circleX + circleSize / 2, circleY + circleSize / 2 + 5, { align: 'center' });
+        }
+
+        const centerX = circleX + circleSize + 10;
+        const participantName = attendee.attendeeData.nome_do_inscrito || attendee.attendeeData.nome || `Inscrito ${index + 1}`;
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'normal');
+        pdf.text('IGREJA EVANGÉLICA COMUNIDADE GLOBAL', centerX, circleY + 8);
+        pdf.setFontSize(11);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'normal');
+        const nameLines = pdf.splitTextToSize(safeText(registration.event.name), 110);
+        nameLines.forEach((line, i) => {
+          pdf.setFontSize(i === 0 ? 11 : 10);
+          pdf.setFont('helvetica', i === 0 ? 'bold' : 'normal');
+          pdf.text(line, centerX, circleY + 16 + i * 5);
+        });
+        const detailLines = pdf.splitTextToSize(
+          `${dateRangeLabel} • ${safeText(registration.event.location)}`,
+          120
+        );
+        const detailStartY = circleY + 16 + nameLines.length * 5 + 4;
+        detailLines.forEach((line, i) => {
+          pdf.setFontSize(9);
+          pdf.setFont('helvetica', 'normal');
+          pdf.text(line, centerX, detailStartY + i * 5);
+        });
+        pdf.text(`Lote ${safeText(attendee.batch.name)}`, centerX, circleY + 36);
+        pdf.setFontSize(11);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(`Participante: ${safeText(participantName)}`, centerX, circleY + 44);
+        pdf.setFontSize(14);
+        pdf.text(`Código: ${safeText(registration.orderCode)}`, centerX, circleY + 52);
+
+        const qrX = pageWidth - qrSize - 20;
+        const qrY = circleY + 5;
+        const attendeeQr = attendeeQRCodes[attendee.id];
+
+        if (attendeeQr) {
+          pdf.addImage(attendeeQr, 'PNG', qrX, qrY, qrSize, qrSize);
+        } else {
+          pdf.setDrawColor(200);
+          pdf.rect(qrX, qrY, qrSize, qrSize);
+        }
+
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'normal');
+        pdf.text('Apresente na entrada', qrX + qrSize / 2, qrY + qrSize + 6, { align: 'center' });
+        pdf.text(safeText(registration.orderCode), qrX + qrSize / 2, qrY + qrSize + 11, { align: 'center' });
+
+        pdf.setLineDash([3, 1]);
+        pdf.setDrawColor(200);
+        pdf.line(20, circleY + sectionHeight - 5, pageWidth - 20, circleY + sectionHeight - 5);
+        pdf.setLineDash([]);
+        yOffset += sectionHeight;
       });
-      
-      // Total
-      yPos += 5;
-      pdf.setFontSize(12);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(safeText(`Total Pago: R$ ${Number(registration.finalPrice).toFixed(2).replace('.', ',')}`), 20, yPos);
-      
-      // Status do pagamento
-      yPos += 10;
-      const isPaid = registration.paymentStatus === 'confirmed' || registration.paymentStatus === 'paid';
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(safeText(`Status: ${isPaid ? 'Pagamento Confirmado' : 'Aguardando Pagamento'}`), 20, yPos);
       
       // Salvar PDF
       pdf.save(`ticket-${registration.orderCode}.pdf`);
