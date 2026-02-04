@@ -11,26 +11,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
+import { CAMPUS_NAMES } from "@shared/campus";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CheckCircle2, Heart, Play, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-
-const CAMPUS_OPTIONS = [
-  "CAMPUS IECG CENTRO",
-  "CAMPUS IECG AERO RANCHO",
-  "CAMPUS IECG ARARAQUARA",
-  "CAMPUS IECG BANDEIRANTES",
-  "CAMPUS IECG DOURADOS",
-  "CAMPUS IECG LOS ANGELES",
-  "CAMPUS IECG MARGARIDA",
-  "CAMPUS IECG PALHOÇA",
-  "CAMPUS IECG PONTA PORÃ",
-  "CAMPUS IECG RIBAS DO RIO PARDO",
-  "CAMPUS IECG VILA VELHA",
-];
 
 const REDE_OPTIONS = [
   { value: "IECG KIDS", label: "IECG KIDS" },
@@ -293,7 +280,7 @@ export default function StartForm() {
                       <SelectValue placeholder="Escolher" />
                     </SelectTrigger>
                     <SelectContent>
-                      {CAMPUS_OPTIONS.map(campus => (
+                      {CAMPUS_NAMES.map(campus => (
                         <SelectItem key={campus} value={campus}>
                           {campus}
                         </SelectItem>

@@ -1,10 +1,76 @@
 import { COOKIE_NAME } from "@shared/const";
+import { CAMPUS_NAMES } from "@shared/campus";
 import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 
 const PUBLIC_API_BASE = "https://portal.iecg.com.br/public";
+
+type CampusOption = {
+  id: string;
+  nome: string;
+  campus?: string;
+};
+
+const FALLBACK_CAMPUS_OPTIONS: CampusOption[] = CAMPUS_NAMES.map((nome, index) => ({
+  id: `fallback-campus-${index}`,
+  nome,
+  campus: nome,
+}));
+
+const toCampusOption = (
+  raw: Record<string, unknown>,
+  index: number
+): CampusOption | null => {
+  const nameCandidate =
+    (typeof raw.nome === "string" && raw.nome.trim().length > 0 && raw.nome.trim()) ||
+    (typeof raw.campus === "string" && raw.campus.trim().length > 0 && raw.campus.trim()) ||
+    (typeof raw.name === "string" && raw.name.trim().length > 0 && raw.name.trim()) ||
+    null;
+  if (!nameCandidate) {
+    return null;
+  }
+
+  let idValue: string;
+  if (typeof raw.id === "string" && raw.id.trim().length > 0) {
+    idValue = raw.id.trim();
+  } else if (typeof raw.id === "number" && Number.isFinite(raw.id)) {
+    idValue = raw.id.toString();
+  } else if (
+    typeof raw.campusId === "string" &&
+    raw.campusId.trim().length > 0
+  ) {
+    idValue = raw.campusId.trim();
+  } else {
+    idValue = `campus-${index}-${nameCandidate.replace(/\s+/g, "-").toLowerCase()}`;
+  }
+
+  const campusName =
+    (typeof raw.campus === "string" && raw.campus.trim().length > 0 && raw.campus.trim()) ||
+    nameCandidate;
+
+  return {
+    id: idValue,
+    nome: nameCandidate,
+    campus: campusName,
+  };
+};
+
+const normalizeCampusList = (data: unknown): CampusOption[] => {
+  if (!Array.isArray(data)) {
+    return FALLBACK_CAMPUS_OPTIONS;
+  }
+
+  const normalized = data
+    .map((item, index) => {
+      if (typeof item !== "object" || item === null) return null;
+      return toCampusOption(item as Record<string, unknown>, index);
+    })
+    .filter((item): item is CampusOption => Boolean(item));
+
+  return normalized.length > 0 ? normalized : FALLBACK_CAMPUS_OPTIONS;
+};
 
 
 export const appRouter = router({
@@ -135,18 +201,19 @@ export const appRouter = router({
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(
-            errorData?.erro ||
-              errorData?.message ||
-              `Erro ao carregar os campus (${response.status})`
+          console.warn(
+            "Falha ao carregar campus do portal externo:",
+            response.status,
+            errorData
           );
+          return FALLBACK_CAMPUS_OPTIONS;
         }
 
         const data = await response.json().catch(() => []);
-        return Array.isArray(data) ? data : [];
+        return normalizeCampusList(data);
       } catch (error: any) {
         console.error("Erro ao carregar campus:", error);
-        throw new Error(error.message || "Erro ao carregar os campus.");
+        return FALLBACK_CAMPUS_OPTIONS;
       }
     }),
     buscarPorContato: publicProcedure
