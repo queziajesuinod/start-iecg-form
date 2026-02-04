@@ -1122,7 +1122,7 @@ export default function EventDetails() {
                 Processando...
               </>
             ) : (
-              `Finalizar Inscrição - R$ ${calcularValorTotal().toFixed(2)}`
+              `Finalizar Inscrição - R$ ${pagamentoAgora.toFixed(2)}`
             )}
           </Button>
         </form>

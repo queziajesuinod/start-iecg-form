@@ -20,6 +20,14 @@ import {
 } from '@/lib/eventsApi';
 import { maskCardExpiry, maskCreditCard, maskCVV, removeNonDigits } from '@/lib/masks';
 
+const normalizeStatus = (status?: string | null) =>
+  (status ?? '').trim().toLowerCase();
+
+const isCancelledStatus = (status?: string | null) => {
+  const normalized = normalizeStatus(status);
+  return normalized === 'canceled' || normalized === 'cancelled';
+};
+
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
@@ -44,6 +52,8 @@ const paymentStatusLabel: Record<RegistrationDetails['paymentStatus'], string> =
   partial: 'Parcial',
   paid: 'Pago',
   confirmed: 'Confirmado',
+  canceled: 'Cancelado',
+  cancelled: 'Cancelado',
 };
 
 const paymentStatusVariant: Record<RegistrationDetails['paymentStatus'], 'default' | 'secondary' | 'destructive'> = {
@@ -51,6 +61,8 @@ const paymentStatusVariant: Record<RegistrationDetails['paymentStatus'], 'defaul
   partial: 'default',
   paid: 'default',
   confirmed: 'default',
+  canceled: 'destructive',
+  cancelled: 'destructive',
 };
 
 const methodLabel: Record<RegistrationPayment['method'], string> = {
@@ -193,10 +205,13 @@ export default function RegistrationView() {
     );
   }, [registration]);
 
+  const normalizedPaymentStatus = normalizeStatus(registration?.paymentStatus);
+  const isCancelled = isCancelledStatus(registration?.paymentStatus);
   const isPaid = registration
-    ? registration.paymentStatus === 'paid' ||
-      registration.paymentStatus === 'confirmed' ||
-      registration.remaining <= 0
+    ? !isCancelled &&
+      (normalizedPaymentStatus === 'paid' ||
+        normalizedPaymentStatus === 'confirmed' ||
+        registration.remaining <= 0)
     : false;
 
   const eventPaymentMode = registration?.event?.registrationPaymentMode;
@@ -206,12 +221,13 @@ export default function RegistrationView() {
     ? isBalanceDueMode
       ? 'Saldo a quitar'
       : 'Pagamento único'
-    : 'Modo de pagamento indisponível';
+      : 'Modo de pagamento indisponível';
 
   const canPay =
     registration &&
     isBalanceDueMode &&
     !isPaid &&
+    !isCancelled &&
     registration.remaining > 0;
 
   const eventIdForRegistration = registration?.event?.id;
@@ -391,6 +407,20 @@ export default function RegistrationView() {
           </CardContent>
         </Card>
 
+        {isCancelled && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-rose-600">Inscrição cancelada</CardTitle>
+              <CardDescription>
+                Esta inscrição foi cancelada e não pode ser atualizada ou reaberta.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="text-sm text-rose-700">
+              Qualquer parcela ou QR Code gerado anteriormente não deve ser utilizado.
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle>Status financeiro</CardTitle>
@@ -456,7 +486,7 @@ export default function RegistrationView() {
           </Card>
         )}
 
-        {registration.pixQrCodeBase64 && !isPaid && (
+        {registration.pixQrCodeBase64 && !isPaid && !isCancelled && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

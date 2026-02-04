@@ -146,7 +146,7 @@ export interface RegistrationDetails {
   finalPrice: number;
   paidTotal: number;
   remaining: number;
-  paymentStatus: 'pending' | 'partial' | 'paid' | 'confirmed';
+  paymentStatus: 'pending' | 'partial' | 'paid' | 'confirmed' | 'canceled' | 'cancelled';
   payments: RegistrationPayment[];
   attendees?: Array<{
     id: string;

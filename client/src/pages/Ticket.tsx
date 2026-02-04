@@ -3,7 +3,7 @@ import { useRoute, useLocation } from 'wouter';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { Calendar, MapPin, Users, Download, Loader2, CheckCircle2 } from 'lucide-react';
+import { Calendar, MapPin, Users, Download, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import QRCode from 'qrcode';
 import jsPDF from 'jspdf';
@@ -124,6 +124,14 @@ const formatEventDateRange = (event: Registration['event']) => {
   return formatEventDateLabel(event);
 };
 
+const normalizeStatus = (status?: string | null) =>
+  (status ?? '').trim().toLowerCase();
+
+const isCancelledStatus = (status?: string | null) => {
+  const normalized = normalizeStatus(status);
+  return normalized === 'cancelled' || normalized === 'canceled';
+};
+
 export default function Ticket() {
   const [match, params] = useRoute('/ticket/:orderCode');
   const [, navigate] = useLocation();
@@ -146,7 +154,12 @@ export default function Ticket() {
       const data = await response.json();
       setRegistration(data);
 
+      const cancelled = isCancelledStatus(data.paymentStatus);
       setAttendeeQRCodes({});
+
+      if (cancelled) {
+        return;
+      }
 
       const qrEntries = await Promise.all(
         data.attendees.map(async (attendee) => {
@@ -336,27 +349,53 @@ export default function Ticket() {
 
   const eventDateLabel = formatEventDateLabel(registration.event);
 
-  const isPaid = registration.paymentStatus === 'confirmed' || registration.paymentStatus === 'paid';
+  const normalizedPaymentStatus = normalizeStatus(registration.paymentStatus);
+  const isCancelled = isCancelledStatus(registration.paymentStatus);
+  const isPaid =
+    !isCancelled &&
+    (normalizedPaymentStatus === 'confirmed' ||
+      normalizedPaymentStatus === 'paid' ||
+      registration.remaining <= 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-50 to-white py-12 px-4">
       <div className="container max-w-2xl mx-auto space-y-6">
-        {/* Header de Sucesso */}
+        {/* Header de Status */}
         <div className="text-center space-y-2">
           <div className="flex justify-center">
-            <div className="bg-green-100 p-3 rounded-full">
-              <CheckCircle2 className="w-12 h-12 text-green-600" />
+            <div
+              className={`p-3 rounded-full ${
+                isCancelled ? 'bg-rose-100' : 'bg-green-100'
+              }`}
+            >
+              {isCancelled ? (
+                  <XCircle className="w-12 h-12 text-rose-600" />
+              ) : (
+                <CheckCircle2 className="w-12 h-12 text-green-600" />
+              )}
             </div>
           </div>
-          <h1 className="text-3xl font-bold text-green-600">Inscrição Confirmada!</h1>
-          <p className="text-muted-foreground">
+          <h1
+            className={`text-3xl font-bold ${
+              isCancelled ? 'text-rose-600' : 'text-green-600'
+            }`}
+          >
+            {isCancelled ? 'Inscrição Cancelada' : 'Inscrição Confirmada!'}
+          </h1>
+          <p className={isCancelled ? 'text-rose-600' : 'text-muted-foreground'}>
             Código: <span className="font-mono font-bold">{registration.orderCode}</span>
           </p>
         </div>
 
         {/* Card do Ticket */}
         <Card>
-          <CardHeader className="bg-gradient-to-r from-primary to-primary/80 text-white">
+          <CardHeader
+            className={`bg-gradient-to-r ${
+              isCancelled
+                ? 'from-rose-500 to-rose-600'
+                : 'from-primary to-primary/80'
+            } text-white`}
+          >
             <div className="space-y-2">
               <h2 className="text-2xl font-bold">{registration.event.name}</h2>
               <div className="flex items-center gap-2 text-sm">
@@ -370,33 +409,59 @@ export default function Ticket() {
             </div>
           </CardHeader>
           <CardContent className="pt-6 space-y-6">
-            {/* QR Code por inscrito */}
-            <div className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                {registration.attendees.map((attendee, index) => {
-                  const nome = attendee.attendeeData.nome_do_inscrito || attendee.attendeeData.nome || `Inscrito ${index + 1}`;
-                  const attendeeQr = attendeeQRCodes[attendee.id];
-
-                  return (
-                    <div key={attendee.id} className="bg-white p-4 rounded-lg border-2 border-dashed flex flex-col items-center">
-                      {attendeeQr ? (
-                        <img src={attendeeQr} alt={`QR Code de ${nome}`} className="w-48 h-48 object-contain" />
-                      ) : (
-                        <div className="w-48 h-48 flex items-center justify-center text-xs text-muted-foreground">
-                          QR Code sendo gerado...
-                        </div>
-                      )}
-                      <p className="mt-2 font-semibold text-center">{nome}</p>
-                      <p className="text-xs text-muted-foreground">Lote: {attendee.batch.name}</p>
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="text-sm text-muted-foreground text-center">
-                Apresente o QR Code correspondente ao seu nome na entrada do evento
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground">
+                Código: <span className="font-mono font-bold">{registration.orderCode}</span>
               </p>
+              {isCancelled && (
+                <p className="text-sm text-rose-100 mt-2">
+                  Esta inscrição foi cancelada e não possui QR Code válido.
+                </p>
+              )}
             </div>
 
+            {!isCancelled && (
+              <>
+                {/* QR Code por inscrito */}
+                <div className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {registration.attendees.map((attendee, index) => {
+                      const nome =
+                        attendee.attendeeData.nome_do_inscrito ||
+                        attendee.attendeeData.nome ||
+                        `Inscrito ${index + 1}`;
+                      const attendeeQr = attendeeQRCodes[attendee.id];
+
+                      return (
+                        <div
+                          key={attendee.id}
+                          className="bg-white p-4 rounded-lg border-2 border-dashed flex flex-col items-center"
+                        >
+                          {attendeeQr ? (
+                            <img
+                              src={attendeeQr}
+                              alt={`QR Code de ${nome}`}
+                              className="w-48 h-48 object-contain"
+                            />
+                          ) : (
+                            <div className="w-48 h-48 flex items-center justify-center text-xs text-muted-foreground">
+                              QR Code sendo gerado...
+                            </div>
+                          )}
+                          <p className="mt-2 font-semibold text-center">{nome}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Lote: {attendee.batch.name}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-sm text-muted-foreground text-center">
+                    Apresente o QR Code correspondente ao seu nome na entrada do evento
+                  </p>
+                </div>
+              </>
+            )}
             <Separator />
 
             {/* Inscritos */}
@@ -411,7 +476,9 @@ export default function Ticket() {
                     <div className="flex justify-between items-start">
                       <div>
                         <p className="font-medium">
-                          {attendee.attendeeData.nome_do_inscrito || attendee.attendeeData.nome || `Inscrito ${index + 1}`}
+                          {attendee.attendeeData.nome_do_inscrito ||
+                            attendee.attendeeData.nome ||
+                            `Inscrito ${index + 1}`}
                         </p>
                         <p className="text-sm text-muted-foreground">
                           Lote: {attendee.batch.name}
@@ -437,21 +504,45 @@ export default function Ticket() {
             </div>
 
             {/* Status do Pagamento */}
-            <div className={`p-3 rounded-lg ${isPaid ? 'bg-green-50' : 'bg-yellow-50'}`}>
-              <p className={`text-sm font-medium ${isPaid ? 'text-green-700' : 'text-yellow-700'}`}>
-                {isPaid ? '✓ Pagamento Confirmado' : '⏳ Aguardando Pagamento'}
+            <div
+              className={`p-3 rounded-lg ${
+                isCancelled ? 'bg-rose-50' : isPaid ? 'bg-green-50' : 'bg-yellow-50'
+              }`}
+            >
+              <p
+                className={`text-sm font-medium ${
+                  isCancelled
+                    ? 'text-rose-700'
+                    : isPaid
+                    ? 'text-green-700'
+                    : 'text-yellow-700'
+                }`}
+              >
+                {isCancelled
+                  ? 'Inscrição Cancelada'
+                  : isPaid
+                  ? '✓ Pagamento Confirmado'
+                  : '⌛ Aguardando Pagamento'}
               </p>
             </div>
 
-            {/* Botão de Download */}
-            <Button onClick={downloadTicket} className="w-full" size="lg">
-              <Download className="w-4 h-4 mr-2" />
-              Baixar Ticket (PDF)
-            </Button>
+            {!isCancelled ? (
+              <>
+                {/* Botão de Download */}
+                <Button onClick={downloadTicket} className="w-full" size="lg">
+                  <Download className="w-4 h-4 mr-2" />
+                  Baixar Ticket (PDF)
+                </Button>
 
-            <p className="text-xs text-center text-muted-foreground">
-              Guarde este ticket! Você precisará dele para entrar no evento.
-            </p>
+                <p className="text-xs text-center text-muted-foreground">
+                  Guarde este ticket! Você precisará dele para entrar no evento.
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-center text-rose-600">
+                Este pedido foi cancelado e não é possível gerar ou apresentar o ticket.
+              </p>
+            )}
           </CardContent>
         </Card>
 
