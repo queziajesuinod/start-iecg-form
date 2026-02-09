@@ -124,6 +124,21 @@ const formatEventDateRange = (event: Registration['event']) => {
   return formatEventDateLabel(event);
 };
 
+const detectPdfImageFormat = (dataUrl: string): 'PNG' | 'JPEG' | 'WEBP' => {
+  const match = dataUrl.match(/^data:image\/([^;]+);base64,/i);
+  if (!match) {
+    return 'PNG';
+  }
+  const mime = match[1].toLowerCase();
+  if (mime.includes('jpeg') || mime.includes('jpg')) {
+    return 'JPEG';
+  }
+  if (mime.includes('webp')) {
+    return 'WEBP';
+  }
+  return 'PNG';
+};
+
 const normalizeStatus = (status?: string | null) =>
   (status ?? '').trim().toLowerCase();
 
@@ -161,10 +176,15 @@ export default function Ticket() {
         return;
       }
 
+      const eventId = data.event?.id ?? '';
       const qrEntries = await Promise.all(
         data.attendees.map(async (attendee) => {
           try {
-            const payload = `${data.orderCode}:${attendee.id}`;
+            const payload = JSON.stringify({
+              orderCode: data.orderCode,
+              event_id: eventId,
+              attendeeId: attendee.id,
+            });
             const url = await QRCode.toDataURL(payload, {
               width: 250,
               margin: 2,
@@ -238,92 +258,183 @@ export default function Ticket() {
     try {
       const pdf = new jsPDF();
       const pageWidth = pdf.internal.pageSize.getWidth();
-      
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 20;
       const dateRangeLabel = formatEventDateRange(registration.event);
-      const sectionHeight = 120;
-      let yOffset = 20;
-      const circleSize = 60;
-      const qrSize = 50;
+      const headerDetailText = `${dateRangeLabel} • ${safeText(registration.event.location)}`;
+      let yOffset = margin;
 
-      registration.attendees.forEach((attendee, index) => {
-        if (yOffset + sectionHeight > pdf.internal.pageSize.getHeight() - 30) {
-          pdf.addPage();
-          yOffset = 20;
-        }
+      const headerImageSize = 60;
+      const headerTextGap = 12;
 
-        const circleX = 20;
-        const circleY = yOffset;
+      const drawFullHeader = () => {
+        const headerTextX = margin + headerImageSize + headerTextGap;
+        const headerTextWidth = pageWidth - headerTextX - margin;
+        const headerNameLines = pdf.splitTextToSize(
+          safeText(registration.event.name),
+          headerTextWidth
+        );
+        const headerDetailLines = pdf.splitTextToSize(headerDetailText, headerTextWidth);
+
         if (eventImageDataUrl) {
-          pdf.setDrawColor(0);
-          pdf.addImage(eventImageDataUrl, 'PNG', circleX, circleY, circleSize, circleSize);
+          const format = detectPdfImageFormat(eventImageDataUrl);
+          pdf.addImage(eventImageDataUrl, format, margin, margin, headerImageSize, headerImageSize);
         } else {
           pdf.setFillColor(244, 244, 244);
           pdf.setDrawColor(220);
-          pdf.circle(circleX + circleSize / 2, circleY + circleSize / 2, circleSize / 2, 'FD');
-          pdf.setFontSize(18);
+          pdf.rect(margin, margin, headerImageSize, headerImageSize, 'F');
           pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(26);
           const initial = (registration.event.name?.charAt(0) || '?').toUpperCase();
-          pdf.text(initial, circleX + circleSize / 2, circleY + circleSize / 2 + 5, { align: 'center' });
+          pdf.text(
+            initial,
+            margin + headerImageSize / 2,
+            margin + headerImageSize / 2 + 9,
+            { align: 'center' }
+          );
+          pdf.setFillColor(255, 255, 255);
+          pdf.setDrawColor(0);
         }
 
-        const centerX = circleX + circleSize + 10;
-        const participantName = attendee.attendeeData.nome_do_inscrito || attendee.attendeeData.nome || `Inscrito ${index + 1}`;
-        pdf.setFontSize(9);
-        pdf.setFont('helvetica', 'normal');
-        pdf.text('IGREJA EVANGÉLICA COMUNIDADE GLOBAL', centerX, circleY + 8);
-        pdf.setFontSize(11);
         pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(9);
+        pdf.setFontSize(18);
+        const textStartY = margin + 18;
+        headerNameLines.forEach((line, index) => {
+          pdf.text(line, headerTextX, textStartY + index * 8);
+        });
+
         pdf.setFont('helvetica', 'normal');
-        const nameLines = pdf.splitTextToSize(safeText(registration.event.name), 110);
-        nameLines.forEach((line, i) => {
-          pdf.setFontSize(i === 0 ? 11 : 10);
-          pdf.setFont('helvetica', i === 0 ? 'bold' : 'normal');
-          pdf.text(line, centerX, circleY + 16 + i * 5);
-        });
-        const detailLines = pdf.splitTextToSize(
-          `${dateRangeLabel} • ${safeText(registration.event.location)}`,
-          120
-        );
-        const detailStartY = circleY + 16 + nameLines.length * 5 + 4;
-        detailLines.forEach((line, i) => {
-          pdf.setFontSize(9);
-          pdf.setFont('helvetica', 'normal');
-          pdf.text(line, centerX, detailStartY + i * 5);
-        });
-        pdf.text(`Lote ${safeText(attendee.batch.name)}`, centerX, circleY + 36);
         pdf.setFontSize(11);
+        const detailStartY = textStartY + headerNameLines.length * 8 + 6;
+        headerDetailLines.forEach((line, index) => {
+          pdf.text(line, headerTextX, detailStartY + index * 6);
+        });
+
+        const headerTextEndY = detailStartY + headerDetailLines.length * 6;
+        const headerHeight = Math.max(headerImageSize, headerTextEndY - margin);
+        yOffset = margin + headerHeight + 16;
+
+        pdf.setDrawColor(200);
+        pdf.setLineWidth(0.3);
+        pdf.line(margin, yOffset - 8, pageWidth - margin, yOffset - 8);
+        pdf.setDrawColor(0);
+        pdf.setLineWidth(0.2);
+        yOffset += 6;
+      };
+
+      const drawMiniHeader = () => {
+        const miniWidth = pageWidth - margin * 2;
         pdf.setFont('helvetica', 'bold');
-        pdf.text(`Participante: ${safeText(participantName)}`, centerX, circleY + 44);
         pdf.setFontSize(14);
-        pdf.text(`Código: ${safeText(registration.orderCode)}`, centerX, circleY + 52);
+        const titleLines = pdf.splitTextToSize(safeText(registration.event.name), miniWidth);
+        titleLines.forEach((line, index) => {
+          pdf.text(line, margin, margin + 12 + index * 7);
+        });
 
-        const qrX = pageWidth - qrSize - 20;
-        const qrY = circleY + 5;
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(10);
+        const detailLines = pdf.splitTextToSize(headerDetailText, miniWidth);
+        const detailStartY = margin + 12 + titleLines.length * 7 + 6;
+        detailLines.forEach((line, index) => {
+          pdf.text(line, margin, detailStartY + index * 6);
+        });
+
+        yOffset = detailStartY + detailLines.length * 6 + 8;
+        pdf.setDrawColor(200);
+        pdf.setLineWidth(0.3);
+        pdf.line(margin, yOffset - 6, pageWidth - margin, yOffset - 6);
+        pdf.setDrawColor(0);
+        pdf.setLineWidth(0.2);
+        yOffset += 6;
+      };
+
+      drawFullHeader();
+
+      const ensureSpace = (neededHeight: number) => {
+        if (yOffset + neededHeight > pageHeight - margin) {
+          pdf.addPage();
+          drawMiniHeader();
+        }
+      };
+
+      const qrSize = 60;
+      const qrX = pageWidth - margin - qrSize;
+      const cardTextWidth = pageWidth - margin * 2 - qrSize - 14;
+
+      registration.attendees.forEach((attendee, index) => {
+        const participantName =
+          attendee.attendeeData.nome_do_inscrito ||
+          attendee.attendeeData.nome ||
+          `Inscrito ${index + 1}`;
+        const nameLines = pdf.splitTextToSize(
+          `Participante: ${safeText(participantName)}`,
+          cardTextWidth
+        );
+        const lotLines = pdf.splitTextToSize(
+          `Lote: ${safeText(attendee.batch.name)}`,
+          cardTextWidth
+        );
+        const textHeight =
+          nameLines.length * 7 +
+          lotLines.length * 6 +
+          18;
+        const cardHeight = Math.max(textHeight, qrSize + 30) + 24;
+
+        ensureSpace(cardHeight + 6);
+
+        const cardTop = yOffset;
+        let currentY = cardTop + 14;
+
+        nameLines.forEach((line, lineIndex) => {
+          pdf.setFont('helvetica', lineIndex === 0 ? 'bold' : 'normal');
+          pdf.setFontSize(lineIndex === 0 ? 11 : 10);
+          pdf.text(line, margin, currentY);
+          currentY += 7;
+        });
+
+        currentY += 4;
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(10);
+        lotLines.forEach((line) => {
+          pdf.text(line, margin, currentY);
+          currentY += 6;
+        });
+
+        currentY += 4;
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(11);
+        pdf.text(`Código: ${safeText(registration.orderCode)}`, margin, currentY);
+
+        const qrY = cardTop + 10;
         const attendeeQr = attendeeQRCodes[attendee.id];
-
         if (attendeeQr) {
           pdf.addImage(attendeeQr, 'PNG', qrX, qrY, qrSize, qrSize);
         } else {
           pdf.setDrawColor(200);
           pdf.rect(qrX, qrY, qrSize, qrSize);
+          pdf.setDrawColor(0);
         }
 
-        pdf.setFontSize(9);
         pdf.setFont('helvetica', 'normal');
-        pdf.text('Apresente na entrada', qrX + qrSize / 2, qrY + qrSize + 6, { align: 'center' });
-        pdf.text(safeText(registration.orderCode), qrX + qrSize / 2, qrY + qrSize + 11, { align: 'center' });
+        pdf.setFontSize(9);
+        pdf.text('Apresente na entrada', qrX + qrSize / 2, qrY + qrSize + 6, {
+          align: 'center',
+        });
+        pdf.text(safeText(registration.orderCode), qrX + qrSize / 2, qrY + qrSize + 11, {
+          align: 'center',
+        });
 
         pdf.setLineDash([3, 1]);
         pdf.setDrawColor(200);
-        pdf.line(20, circleY + sectionHeight - 5, pageWidth - 20, circleY + sectionHeight - 5);
+        pdf.line(margin, cardTop + cardHeight - 6, pageWidth - margin, cardTop + cardHeight - 6);
         pdf.setLineDash([]);
-        yOffset += sectionHeight;
+        pdf.setDrawColor(0);
+
+        yOffset = cardTop + cardHeight + 10;
       });
-      
-      // Salvar PDF
+
       pdf.save(`ticket-${registration.orderCode}.pdf`);
-      
+
       toast.success('Sucesso!', {
         description: 'Ticket baixado com sucesso',
       });
