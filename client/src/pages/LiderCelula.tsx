@@ -965,7 +965,7 @@ export default function LiderCelula() {
                       Celular: {celula.cel_lider ? formatPhone(celula.cel_lider) : '-'}
                     </p>
                     <a
-                      href={phoneQuery ? `http://localhost:3007/celulas/atualizar?phone=${encodeURIComponent(phoneQuery)}` : undefined}
+                      href={phoneQuery ? `/celulas/atualizar?phone=${encodeURIComponent(phoneQuery)}` : undefined}
                       target="_blank"
                       rel="noreferrer"
                       className={`mt-3 inline-flex items-center justify-center rounded-full border px-3 py-1 text-sm font-semibold transition ${
