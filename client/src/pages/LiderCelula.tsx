@@ -15,6 +15,7 @@ import {
   linkLeaderSpouse,
   upsertLeaderForCelula,
 } from '@/lib/celulaLeaderApi';
+import { geocodeAddress } from '@/lib/geocode';
 
 const MARITAL_OPTIONS = [
   { value: 'solteiro', label: 'Solteiro(a)' },
@@ -225,6 +226,10 @@ type LeaderForm = {
   batizado: boolean;
   encontro: boolean;
   escolas: string[];
+  endereco: string;
+  numero: string;
+  bairro: string;
+  cep: string;
   foto?: string;
 };
 
@@ -240,6 +245,10 @@ const initialLeaderForm: LeaderForm = {
   batizado: false,
   encontro: false,
   escolas: [],
+  endereco: '',
+  numero: '',
+  bairro: '',
+  cep: '',
   foto: undefined,
 };
 
@@ -255,6 +264,7 @@ export default function LiderCelula() {
   const [savingLeader, setSavingLeader] = useState(false);
   const [savingCell, setSavingCell] = useState(false);
   const [linkingSpouse, setLinkingSpouse] = useState(false);
+  const [geoLoading, setGeoLoading] = useState(false);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [photoZoom, setPhotoZoom] = useState(1);
@@ -336,6 +346,10 @@ export default function LiderCelula() {
           batizado: fallbackLeader.batizado ?? prev.batizado,
           encontro: fallbackLeader.encontro ?? prev.encontro,
           escolas: fallbackLeader.escolas ?? prev.escolas,
+          endereco: fallbackLeader.endereco ?? prev.endereco,
+          numero: fallbackLeader.numero ?? prev.numero,
+          bairro: fallbackLeader.bairro ?? prev.bairro,
+          cep: fallbackLeader.cep ?? prev.cep,
           foto: leaderImage ?? prev.foto,
         }));
       }
@@ -368,21 +382,25 @@ export default function LiderCelula() {
     const spouseDetails = spouseOverride ?? (await loadSpouseInfoForLeader(effectiveLeader));
     setSpouseInfo(spouseDetails);
     setSelectedCelula(celula);
-    setLeaderForm((prev) => ({
-      ...prev,
-      celulaId: celula.id,
-      name: celula.lider || effectiveLeader?.name || prev.name,
-      email: celula.email_lider || effectiveLeader?.email || prev.email,
-      telefone: formatPhone(celula.cel_lider || effectiveLeader?.telefone || prev.telefone),
-      dataNascimento: effectiveLeader?.data_nascimento ?? prev.dataNascimento,
-      cpf: effectiveLeader?.cpf ?? prev.cpf,
-      estadoCivil: effectiveLeader?.estado_civil ?? prev.estadoCivil,
-      profissao: effectiveLeader?.profissao ?? prev.profissao,
-      batizado: effectiveLeader?.batizado ?? prev.batizado,
-      encontro: effectiveLeader?.encontro ?? prev.encontro,
-      escolas: effectiveLeader?.escolas ?? prev.escolas,
-      foto: computedPhoto ?? prev.foto,
-    }));
+      setLeaderForm((prev) => ({
+        ...prev,
+        celulaId: celula.id,
+        name: celula.lider || effectiveLeader?.name || prev.name,
+        email: celula.email_lider || effectiveLeader?.email || prev.email,
+        telefone: formatPhone(celula.cel_lider || effectiveLeader?.telefone || prev.telefone),
+        dataNascimento: effectiveLeader?.data_nascimento ?? prev.dataNascimento,
+        cpf: effectiveLeader?.cpf ?? prev.cpf,
+        estadoCivil: effectiveLeader?.estado_civil ?? prev.estadoCivil,
+        profissao: effectiveLeader?.profissao ?? prev.profissao,
+        batizado: effectiveLeader?.batizado ?? prev.batizado,
+        encontro: effectiveLeader?.encontro ?? prev.encontro,
+        escolas: effectiveLeader?.escolas ?? prev.escolas,
+        endereco: effectiveLeader?.endereco ?? prev.endereco,
+        numero: effectiveLeader?.numero ?? prev.numero,
+        bairro: effectiveLeader?.bairro ?? prev.bairro,
+        cep: effectiveLeader?.cep ?? prev.cep,
+        foto: computedPhoto ?? prev.foto,
+      }));
   };
 
   const handleSelectCelula = async (celula: LeaderCelulaRecord) => {
@@ -419,6 +437,50 @@ export default function LiderCelula() {
         : [...prev.escolas, school];
       return { ...prev, escolas: nextSchools };
     });
+  };
+
+  const geocodeAndFillAddress = async (query: string, showToast = false) => {
+    try {
+      const geo = await geocodeAddress(query);
+      if (!geo) {
+        if (showToast) toast.error("Nenhum resultado encontrado para esse endereço/CEP.");
+        return null;
+      }
+      setLeaderForm((prev) => ({
+        ...prev,
+        endereco: geo.logradouro || prev.endereco,
+        numero: prev.numero?.trim() ? prev.numero : geo.numeroEncontrado || prev.numero,
+        bairro: geo.bairro || prev.bairro,
+        cep: geo.cepEncontrado || prev.cep,
+      }));
+      if (showToast) toast.success("Endereço preenchido.");
+      return geo;
+    } catch (error) {
+      console.error("Erro ao buscar endereço:", error);
+      if (showToast) toast.error("Erro ao buscar o endereço.");
+      return null;
+    }
+  };
+
+  const handleFillAddressFromCep = async () => {
+    const queryParts = [
+      leaderForm.endereco,
+      leaderForm.numero,
+      leaderForm.cep,
+      leaderForm.bairro,
+    ]
+      .map((part) => (part ?? "").trim())
+      .filter(Boolean);
+    if (!queryParts.length) {
+      toast.error("Informe o CEP ou algum dado do endereço para preencher.");
+      return;
+    }
+    setGeoLoading(true);
+    try {
+      await geocodeAndFillAddress(queryParts.join(" "), true);
+    } finally {
+      setGeoLoading(false);
+    }
   };
 
   const startCamera = async () => {
@@ -509,6 +571,19 @@ export default function LiderCelula() {
   };
 
   const handleSalvarLeader = async () => {
+    const requiredFields = [
+      { value: leaderForm.name, label: 'nome' },
+      { value: leaderForm.email, label: 'e-mail' },
+      { value: leaderForm.telefone, label: 'telefone' },
+      { value: leaderForm.cpf, label: 'CPF' },
+    ];
+    const missingFields = requiredFields
+      .filter((item) => !item.value.trim())
+      .map((item) => item.label);
+    if (missingFields.length > 0) {
+      toast.error(`Informe ${missingFields.join(', ')} para cadastrar o líder.`);
+      return;
+    }
     setSavingLeader(true);
     try {
       const finalPhotoDataUrl = await buildFinalLeaderPhoto();
@@ -530,6 +605,10 @@ export default function LiderCelula() {
         batizado: leaderForm.batizado || undefined,
         encontro: leaderForm.encontro || undefined,
         escolas: leaderForm.escolas.length ? leaderForm.escolas : undefined,
+        endereco: leaderForm.endereco || undefined,
+        numero: leaderForm.numero || undefined,
+        bairro: leaderForm.bairro || undefined,
+        cep: leaderForm.cep || undefined,
         image:
           finalPhotoDataUrl?.replace(/^data:image\/[^;]+;base64,/, '') ??
           (photoDataUrl ? photoDataUrl.replace(/^data:image\/[^;]+;base64,/, '') : undefined),
@@ -600,6 +679,11 @@ export default function LiderCelula() {
   const phoneQuery = cleanDigits(leaderForm.telefone) || cleanDigits(searchContact);
   const leaderProfileImage = getLeaderImage(leaderResult);
   const spousePhoto = toDataUrl(spouseInfo?.foto ?? spouseInfo?.image);
+  const canSubmitLeader =
+    Boolean(leaderForm.name.trim()) &&
+    Boolean(leaderForm.email.trim()) &&
+    Boolean(leaderForm.telefone.trim()) &&
+    Boolean(leaderForm.cpf.trim());
 
   const displayCelulas = useMemo(
     () => celulas.filter((celula) => celula.ativo !== false),
@@ -845,6 +929,52 @@ export default function LiderCelula() {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="leader-cep">CEP</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="leader-cep"
+                    value={leaderForm.cep}
+                    onChange={(event) => handleLeaderInput('cep')(event.target.value)}
+                  />
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={handleFillAddressFromCep}
+                    disabled={geoLoading}
+                    className="shrink-0"
+                  >
+                    {geoLoading ? 'Buscando...' : 'Preencher'}
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="leader-endereco">Endereço</Label>
+                <Input
+                  id="leader-endereco"
+                  value={leaderForm.endereco}
+                  onChange={(event) => handleLeaderInput('endereco')(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="leader-numero">Número</Label>
+                <Input
+                  id="leader-numero"
+                  value={leaderForm.numero}
+                  onChange={(event) => handleLeaderInput('numero')(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="leader-bairro">Bairro</Label>
+                <Input
+                  id="leader-bairro"
+                  value={leaderForm.bairro}
+                  onChange={(event) => handleLeaderInput('bairro')(event.target.value)}
+                />
+              </div>
+            </div>
+
             <div className="flex flex-wrap gap-4">
               <label className="inline-flex items-center gap-2 text-sm">
                 <Checkbox checked={leaderForm.batizado} onCheckedChange={() => toggleCheckbox('batizado')} />
@@ -879,9 +1009,9 @@ export default function LiderCelula() {
               </div>
             </div>
 
-            <Button onClick={handleSalvarLeader} disabled={savingLeader}>
-              {savingLeader ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
-              Atualizar usuário/líder
+            <Button onClick={handleSalvarLeader} disabled={savingLeader || !canSubmitLeader}>
+              {savingLeader ? <Loader2 className="animate-spin h-12 w-12 mr-2" /> : null}
+              Atualizar dados do líder
             </Button>
           </CardContent>
         </Card>

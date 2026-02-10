@@ -6,11 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { geocodeAddress } from "@/lib/geocode";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
-
-const GOOGLE_GEOCODE_KEY = "AIzaSyBs7pQorgiixQJBhXFQFY4_ouvlFXlgFEs";
 
 type CelulaForm = {
   id: string;
@@ -238,66 +237,18 @@ export default function AtualizarCelula() {
   const atualizarCelula = trpc.celulas.atualizar.useMutation();
   const criarCelula = trpc.celulas.criar.useMutation();
 
-  const fetchGeocode = async (query: string) => {
-    const params = new URLSearchParams({
-      address: query,
-      key: GOOGLE_GEOCODE_KEY,
-    });
-    const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`);
-    if (!res.ok) {
-      throw new Error("Falha ao consultar o Google Maps.");
-    }
-    const data = await res.json();
-    if (!data || data.status !== "OK" || !Array.isArray(data.results) || data.results.length === 0) {
-      return null;
-    }
-    const result = data.results[0];
-    const location = result.geometry?.location || {};
-    const components = result.address_components || [];
-    const getComponent = (types: string[]) =>
-      components.find(comp => types.every(type => comp.types.includes(type)))?.long_name || "";
-    const bairro =
-      getComponent(["sublocality", "political"]) ||
-      getComponent(["neighborhood", "political"]) ||
-      "";
-    const logradouro = getComponent(["route"]) || "";
-    const numeroEncontrado =
-      getComponent(["street_number"]) ||
-      getComponent(["premise"]) ||
-      getComponent(["subpremise"]) ||
-      "";
-    const cidade =
-      getComponent(["locality"]) ||
-      getComponent(["administrative_area_level_2"]) ||
-      "";
-    const estado =
-      getComponent(["administrative_area_level_1"]) ||
-      "";
-    const cepEncontrado = getComponent(["postal_code"]) || "";
-    return {
-      lat: location.lat,
-      lon: location.lng,
-      bairro,
-      logradouro,
-      numeroEncontrado,
-      cidade,
-      estado,
-      cepEncontrado,
-    };
-  };
-
   const geocodeAndFill = async (query: string, showToast = false) => {
     try {
-      const geo = await fetchGeocode(query);
+      const geo = await geocodeAddress(query);
       if (!geo) {
         if (showToast) toast.error("Nenhum resultado encontrado para esse endereço/CEP.");
-        return;
+        return null;
       }
 
       setFormData(prev => ({
         ...prev,
-        lat: geo.lat ?? prev.lat,
-        lon: geo.lon ?? prev.lon,
+        lat: geo.lat !== undefined ? String(geo.lat) : prev.lat,
+        lon: geo.lon !== undefined ? String(geo.lon) : prev.lon,
         endereco: geo.logradouro || prev.endereco,
         numero: prev.numero?.trim() ? prev.numero : geo.numeroEncontrado || prev.numero,
         bairro: geo.bairro || prev.bairro,
@@ -494,12 +445,12 @@ export default function AtualizarCelula() {
 
       let mergedForm = { ...formData };
       if (query) {
-        const geo = await fetchGeocode(query);
+        const geo = await geocodeAddress(query);
         if (geo) {
           mergedForm = {
             ...formData,
-            lat: geo.lat ?? formData.lat,
-            lon: geo.lon ?? formData.lon,
+            lat: geo.lat !== undefined ? String(geo.lat) : formData.lat,
+            lon: geo.lon !== undefined ? String(geo.lon) : formData.lon,
             endereco: geo.logradouro || formData.endereco,
             numero: formData.numero?.trim() ? formData.numero : geo.numeroEncontrado || formData.numero,
             bairro: geo.bairro || formData.bairro,

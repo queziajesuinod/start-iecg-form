@@ -15,6 +15,10 @@ export interface LeaderSummary {
   batizado?: boolean;
   encontro?: boolean;
   escolas?: string[];
+  endereco?: string;
+  numero?: string;
+  bairro?: string;
+  cep?: string;
   foto?: string;
   image?: string;
   spouse?: LeaderSummary;
@@ -68,6 +72,10 @@ export interface UpsertLeaderPayload {
   batizado?: boolean;
   encontro?: boolean;
   escolas?: string[];
+  endereco?: string;
+  numero?: string;
+  bairro?: string;
+  cep?: string;
   image?: string;
 }
 
