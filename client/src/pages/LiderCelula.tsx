@@ -13,6 +13,7 @@ import {
   buscarLeaderPorContato,
   buscarUsuarioPorId,
   linkLeaderSpouse,
+  unlinkLeaderSpouse,
   upsertLeaderForCelula,
 } from '@/lib/celulaLeaderApi';
 import { geocodeAddress } from '@/lib/geocode';
@@ -241,6 +242,7 @@ type LeaderForm = {
   numero: string;
   bairro: string;
   cep: string;
+  nomeEsposo: string;
   foto?: string;
 };
 
@@ -261,6 +263,7 @@ const initialLeaderForm: LeaderForm = {
   bairro: '',
   cep: '',
   escolaridade: '',
+  nomeEsposo: '',
   foto: undefined,
 };
 
@@ -276,6 +279,7 @@ export default function LiderCelula() {
   const [savingLeader, setSavingLeader] = useState(false);
   const [savingCell, setSavingCell] = useState(false);
   const [linkingSpouse, setLinkingSpouse] = useState(false);
+  const [unlinkingSpouse, setUnlinkingSpouse] = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
@@ -364,6 +368,7 @@ export default function LiderCelula() {
           bairro: fallbackLeader.bairro ?? prev.bairro,
           cep: fallbackLeader.cep ?? prev.cep,
           foto: leaderImage ?? prev.foto,
+          nomeEsposo: spouseDetails?.name ?? prev.nomeEsposo,
         }));
       }
       const activeCelulas = fetchedCelulas.filter((celula) => celula.ativo !== false);
@@ -414,6 +419,7 @@ export default function LiderCelula() {
         bairro: effectiveLeader?.bairro ?? prev.bairro,
         cep: effectiveLeader?.cep ?? prev.cep,
         foto: computedPhoto ?? prev.foto,
+        nomeEsposo: spouseDetails?.name ?? prev.nomeEsposo,
       }));
   };
 
@@ -624,6 +630,7 @@ export default function LiderCelula() {
         bairro: leaderForm.bairro || undefined,
         cep: leaderForm.cep || undefined,
         escolaridade: leaderForm.escolaridade || undefined,
+        nome_esposo: leaderForm.nomeEsposo || undefined,
         image:
           finalPhotoDataUrl?.replace(/^data:image\/[^;]+;base64,/, '') ??
           (photoDataUrl ? photoDataUrl.replace(/^data:image\/[^;]+;base64,/, '') : undefined),
@@ -678,6 +685,7 @@ export default function LiderCelula() {
         name: response.leader.name,
         email: response.leader.email,
         telefone: formatPhone(response.leader.telefone || ''),
+        nomeEsposo: response.spouse?.name ?? prev.nomeEsposo,
       }));
       toast.success('Cônjuge vinculado com sucesso.');
     } catch (error) {
@@ -685,6 +693,28 @@ export default function LiderCelula() {
       toast.error('Não foi possível vincular o cônjuge.');
     } finally {
       setLinkingSpouse(false);
+    }
+  };
+
+  const handleUnlinkSpouse = async () => {
+    if (!leaderResult?.id) {
+      toast.error('Busque um líder antes de desvincular o cônjuge.');
+      return;
+    }
+    setUnlinkingSpouse(true);
+    try {
+      await unlinkLeaderSpouse(leaderResult.id);
+      setSpouseInfo(null);
+      setLeaderResult((prev) =>
+        prev ? { ...prev, spouse: null, conjuge: null, partner: null } : prev
+      );
+      setLeaderForm((prev) => ({ ...prev, nomeEsposo: '' }));
+      toast.success('Cônjuge desvinculado com sucesso.');
+    } catch (error) {
+      console.error('Erro ao desvincular cônjuge', error);
+      toast.error('Não foi possível desvincular o cônjuge.');
+    } finally {
+      setUnlinkingSpouse(false);
     }
   };
 
@@ -1040,77 +1070,106 @@ export default function LiderCelula() {
               </div>
             </div>
 
-            <Button onClick={handleSalvarLeader} disabled={savingLeader || !canSubmitLeader}>
-              {savingLeader ? <Loader2 className="animate-spin h-12 w-12 mr-2" /> : null}
-              Atualizar dados do líder
-            </Button>
           </CardContent>
         </Card>
 
         {showSpouseSection && (
           <Card>
             <CardHeader>
-              <CardTitle>Vincular cônjuge</CardTitle>
+              <CardTitle>Pesquisar e Vincular cônjuge</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-            {spouseInfo ? (
-              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full border bg-white">
-                    {spousePhoto ? (
-                      <img
-                        src={spousePhoto}
-                        alt={`Foto de ${spouseInfo?.name ?? 'cônjuge'}`}
-                        className="h-16 w-16 rounded-full object-cover"
-                      />
-                    ) : (
-                      <User className="h-8 w-8 text-slate-400" />
-                    )}
+              <div className="space-y-2">
+                <Label htmlFor="spouse-name">Nome completo do cônjuge</Label>
+                <Input
+                  id="spouse-name"
+                  value={leaderForm.nomeEsposo}
+                  onChange={(event) => handleLeaderInput('nomeEsposo')(event.target.value)}
+                />
+                <p className="text-xs text-slate-500">
+                  Preencha quando o cônjuge não estiver cadastrado como líder.
+                </p>
+              </div>
+              {spouseInfo ? (
+                <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full border bg-white">
+                      {spousePhoto ? (
+                        <img
+                          src={spousePhoto}
+                          alt={`Foto de ${spouseInfo?.name ?? 'cônjuge'}`}
+                          className="h-16 w-16 rounded-full object-cover"
+                        />
+                      ) : (
+                        <User className="h-8 w-8 text-slate-400" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{spouseInfo.name}</p>
+                      <p className="text-xs text-slate-500">{spouseInfo.email || 'E-mail não informado'}</p>
+                      <p className="text-xs text-slate-500">
+                        {spouseInfo.telefone ? formatPhone(spouseInfo.telefone) : 'Telefone não informado'}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">{spouseInfo.name}</p>
-                    <p className="text-xs text-slate-500">{spouseInfo.email || 'E-mail não informado'}</p>
-                    <p className="text-xs text-slate-500">
-                      {spouseInfo.telefone ? formatPhone(spouseInfo.telefone) : 'Telefone não informado'}
-                    </p>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-[11px] uppercase tracking-[0.4em] text-slate-400">Cônjuge vinculado</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleUnlinkSpouse}
+                      disabled={unlinkingSpouse}
+                    >
+                      {unlinkingSpouse ? <Loader2 className="animate-spin h-3 w-3" /> : 'Desvincular'}
+                    </Button>
                   </div>
                 </div>
-                <p className="text-[11px] uppercase tracking-[0.4em] text-slate-400">Cônjuge vinculado</p>
-              </div>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="spouse-contact">E-mail ou telefone do cônjuge</Label>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="spouse-contact">E-mail ou telefone do cônjuge ( Caso seja Líder também) </Label>
                   <Input
                     id="spouse-contact"
                     placeholder="nome@dominio.com ou (67) 99999-9999"
                     value={spouseContact}
                     onChange={(event) => {
                       const next = event.target.value;
-                      if (next.includes('@')) {
+                      const hasEmailChar = next.includes('@');
+                      const hasLetter = /[A-Za-z]/.test(next);
+                      if (hasEmailChar || hasLetter) {
                         setSpouseContact(next.replace(/\s+/g, ''));
                       } else {
                         setSpouseContact(formatPhone(next));
                       }
                     }}
                   />
-                </div>
-                <Button
-                  onClick={handleLinkSpouse}
-                  disabled={linkingSpouse || !allowSpouseLink || !spouseContact.trim()}
-                  variant={allowSpouseLink ? undefined : 'outline'}
-                >
-                  {linkingSpouse ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
-                  Vincular cônjuge
-                </Button>
-                <p className="text-sm text-slate-500">
-                  Nenhum cônjuge vinculado. Use o campo acima para buscar por e-mail ou telefone.
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
+                  </div>
+                  <Button
+                    onClick={handleLinkSpouse}
+                    disabled={linkingSpouse || !allowSpouseLink || !spouseContact.trim()}
+                    variant={allowSpouseLink ? undefined : 'outline'}
+                  >
+                    {linkingSpouse ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
+                    Vincular cônjuge
+                  </Button>
+                  <p className="text-sm text-slate-500">
+                    Nenhum cônjuge vinculado. Use o campo acima para buscar por e-mail ou telefone.
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        <Button
+          onClick={handleSalvarLeader}
+          disabled={savingLeader || !canSubmitLeader}
+          size="lg"
+          className="w-full text-base"
+        >
+          {savingLeader ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
+          Atualizar dados do líder
+        </Button>
 
         {displayCelulas.length > 0 ? (
           <Card>

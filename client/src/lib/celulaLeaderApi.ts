@@ -20,6 +20,7 @@ export interface LeaderSummary {
   bairro?: string;
   cep?: string;
   escolaridade?: string;
+  nome_esposo?: string;
   foto?: string;
   image?: string;
   spouse?: LeaderSummary;
@@ -78,6 +79,7 @@ export interface UpsertLeaderPayload {
   bairro?: string;
   cep?: string;
   escolaridade?: string;
+  nome_esposo?: string;
   image?: string;
 }
 
@@ -104,6 +106,13 @@ export interface LinkSpouseResponse {
 
 export const linkLeaderSpouse = async (payload: LinkSpousePayload) => {
   const response = await api.post<LinkSpouseResponse>('/public/celulas/leader/spouse', payload);
+  return response.data;
+};
+
+export const unlinkLeaderSpouse = async (leaderId: string) => {
+  const response = await api.delete('/public/celulas/leader/spouse', {
+    data: { leaderId },
+  });
   return response.data;
 };
 
