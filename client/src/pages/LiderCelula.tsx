@@ -275,6 +275,7 @@ export default function LiderCelula() {
   };
 
   const clearLeaderPhoto = () => {
+    stopCamera();
     setLeaderForm((prev) => ({ ...prev, foto: undefined }));
     setLeaderPhotoData(null);
   };
@@ -457,6 +458,7 @@ export default function LiderCelula() {
       if (compressed) {
         setLeaderForm((prev) => ({ ...prev, foto: compressed }));
         setLeaderPhotoData(compressed);
+        stopCamera();
       }
     } catch (error) {
       console.error('Erro ao capturar foto', error);
