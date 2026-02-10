@@ -428,10 +428,6 @@ export default function LiderCelula() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
       setCameraActive(true);
     } catch (error) {
       console.error('Erro ao ativar webcam', error);
@@ -442,6 +438,9 @@ export default function LiderCelula() {
   const stopCamera = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     setCameraActive(false);
   };
 
@@ -470,6 +469,16 @@ export default function LiderCelula() {
       stopCamera();
     };
   }, []);
+
+  useEffect(() => {
+    if (!cameraActive) {
+      return;
+    }
+    if (videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      void videoRef.current.play();
+    }
+  }, [cameraActive]);
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
