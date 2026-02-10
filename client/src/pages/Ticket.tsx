@@ -459,6 +459,8 @@ export default function Ticket() {
   }
 
   const eventDateLabel = formatEventDateLabel(registration.event);
+  const eventThumbnailSrc = eventImageDataUrl || registration.event.imageUrl;
+  const eventInitial = (registration.event.name?.charAt(0) || '?').toUpperCase();
 
   const normalizedPaymentStatus = normalizeStatus(registration.paymentStatus);
   const isCancelled = isCancelledStatus(registration.paymentStatus);
@@ -507,15 +509,34 @@ export default function Ticket() {
                 : 'from-primary to-primary/80'
             } text-white`}
           >
-            <div className="space-y-2">
-              <h2 className="text-2xl font-bold">{registration.event.name}</h2>
-              <div className="flex items-center gap-2 text-sm">
-                <Calendar className="w-4 h-4" />
-                <span>{eventDateLabel}</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <MapPin className="w-4 h-4" />
-                <span>{registration.event.location}</span>
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-20 h-20 rounded-full border border-white/40 bg-white/10 overflow-hidden flex items-center justify-center">
+                  {eventThumbnailSrc ? (
+                    <img
+                      src={eventThumbnailSrc}
+                      alt={registration.event.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-2xl font-bold text-white/80">
+                      {eventInitial}
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-1 text-white">
+                  <h2 className="text-2xl font-bold leading-tight">
+                    {registration.event.name}
+                  </h2>
+                  <div className="flex items-center gap-2 text-sm text-white/90">
+                    <Calendar className="w-4 h-4" />
+                    <span>{eventDateLabel}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-white/90">
+                    <MapPin className="w-4 h-4" />
+                    <span>{registration.event.location}</span>
+                  </div>
+                </div>
               </div>
             </div>
           </CardHeader>

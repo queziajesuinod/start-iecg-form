@@ -384,6 +384,33 @@ export default function EventDetails() {
     return true;
   };
 
+  const ensureSelectedBatchesStillAvailable = async () => {
+    try {
+      const refreshedLotes = await listarLotesPublicos(eventId);
+      setLotes(refreshedLotes.filter((lote) => lote.isActive));
+
+      for (let index = 0; index < inscritos.length; index++) {
+        const inscrito = inscritos[index];
+        if (!inscrito.batchId) continue;
+
+        const matchingBatch = refreshedLotes.find((lote) => lote.id === inscrito.batchId);
+        if (!matchingBatch || !isBatchActiveNow(matchingBatch)) {
+          const loteNome = matchingBatch?.name || 'selecionado';
+          toast.error(
+            `O lote ${loteNome} do Inscrito ${index + 1} não está mais disponível. Escolha outro lote.`
+          );
+          return false;
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Erro ao verificar lotes disponíveis antes da compra:', error);
+      toast.error('Não foi possível validar a disponibilidade dos lotes. Tente novamente em instantes.');
+      return false;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -393,6 +420,7 @@ export default function EventDetails() {
     }
 
     if (!validarFormulario()) return;
+    if (!(await ensureSelectedBatchesStillAvailable())) return;
 
     try {
       setSubmitting(true);
