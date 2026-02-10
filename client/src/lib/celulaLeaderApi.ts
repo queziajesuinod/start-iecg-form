@@ -116,6 +116,11 @@ export const unlinkLeaderSpouse = async (leaderId: string) => {
   return response.data;
 };
 
+export const searchPublicUser = async (params: { email?: string; telefone?: string }) => {
+  const response = await api.get<LeaderSummary | null>('/public/users', { params });
+  return response.data;
+};
+
 export const buscarUsuarioPorId = async (id: string) => {
   const response = await api.get<LeaderSummary>(`/public/users/${id}`);
   return response.data;

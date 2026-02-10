@@ -252,7 +252,7 @@ const initialLeaderForm: LeaderForm = {
   email: '',
   telefone: '',
   dataNascimento: '',
-  cpf: '',
+  cpf: '0000000',
   estadoCivil: '',
   profissao: '',
   batizado: false,

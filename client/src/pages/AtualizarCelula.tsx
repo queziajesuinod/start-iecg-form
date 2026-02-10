@@ -10,6 +10,8 @@ import { geocodeAddress } from "@/lib/geocode";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
+import axios, { AxiosError } from "axios";
+import { searchPublicUser, upsertLeaderForCelula } from "@/lib/celulaLeaderApi";
 
 type CelulaForm = {
   id: string;
@@ -34,6 +36,7 @@ type CelulaForm = {
   horario: string;
   campusId?: string;
   pastor_campus?: string;
+  leaderId?: string;
   ativo?: boolean;
 };
 
@@ -61,6 +64,7 @@ const initialForm: CelulaForm = {
   campusId: "",
   pastor_campus: "",
   ativo: true,
+  leaderId: "",
 };
 
 type CampusOption = {
@@ -84,6 +88,7 @@ const REDE_OPTIONS = [
 ];
 
 const DIAS_SEMANA = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
+const DEFAULT_LEADER_ROLE = "7d47d03a-a7aa-4907-b8b9-8fcf87bd52dc";
 
 const formatPhone = (value: string) => {
   const digits = value.replace(/\D/g, "").slice(0, 11);
@@ -130,6 +135,7 @@ const buildCelulaPayload = (data: CelulaForm, dias: string[]) => ({
   horario: data.horario || "",
   lat: parseCoordinate(data.lat),
   lon: parseCoordinate(data.lon),
+  leaderId: data.leaderId || undefined,
 });
 
 function extractCelulaRaw(entry: unknown): Record<string, unknown> | null {
@@ -184,6 +190,7 @@ export default function AtualizarCelula() {
   const [resultadoMultiplo, setResultadoMultiplo] = useState<CelulaForm[] | null>(null);
   const [mostrarSelecao, setMostrarSelecao] = useState(false);
   const [statusAlterandoId, setStatusAlterandoId] = useState<string | null>(null);
+  const [ensuringLeader, setEnsuringLeader] = useState(false);
 
   const contatoEhEmail = useMemo(() => contatoBusca.includes("@"), [contatoBusca]);
   const contatoSanitizado = useMemo(() => {
@@ -312,6 +319,52 @@ export default function AtualizarCelula() {
     setDiasSelecionados(prev => (prev.includes(dia) ? prev.filter(d => d !== dia) : [...prev, dia]));
   };
 
+  const ensureLeaderUserId = async () => {
+    const email = formData.email_lider?.trim();
+    const telefone = cleanDigits(formData.cel_lider);
+    if (!email && !telefone) {
+      return undefined;
+    }
+    setEnsuringLeader(true);
+    try {
+      let found = null;
+      try {
+        found = await searchPublicUser({
+          email: email || undefined,
+          telefone: telefone || undefined,
+        });
+      } catch (error) {
+        const axiosErr = error as AxiosError;
+        if (axiosErr.response?.status !== 404) {
+          throw error;
+        }
+        found = null;
+      }
+      if (found?.id) {
+        setFormData(prev => ({ ...prev, leaderId: found.id }));
+        return found.id;
+      }
+      const response = await upsertLeaderForCelula({
+        lider: formData.lider || "",
+        email_lider: email || "",
+        cel_lider: telefone || "",
+        perfilId: DEFAULT_LEADER_ROLE,
+        cpf: "0000000",
+        is_lider_celula: true,
+      });
+      if (response?.leader?.id) {
+        setFormData(prev => ({ ...prev, leaderId: response.leader.id }));
+        return response.leader.id;
+      }
+    } catch (error) {
+      console.error("Erro ao garantir usuário líder:", error);
+      toast.error("Não foi possível garantir o cadastro do usuário do líder.");
+    } finally {
+      setEnsuringLeader(false);
+    }
+    return undefined;
+  };
+
   const handleSelecionarCelula = (celula: CelulaForm) => {
     setFormData(buildFormFromCelula(celula));
     setMostrarSelecao(false);
@@ -430,36 +483,39 @@ export default function AtualizarCelula() {
       return;
     }
 
+    const leaderId = await ensureLeaderUserId();
+    const baseForm = leaderId ? { ...formData, leaderId } : formData;
+
     try {
       const queryParts = [
-        formData.endereco,
-        formData.numero,
-        formData.cep,
-        formData.bairro,
-        formData.cidade,
-        formData.estado,
+        baseForm.endereco,
+        baseForm.numero,
+        baseForm.cep,
+        baseForm.bairro,
+        baseForm.cidade,
+        baseForm.estado,
       ]
         .map(p => (p ?? "").trim())
         .filter(Boolean);
       const query = queryParts.join(" ");
 
-      let mergedForm = { ...formData };
-      if (query) {
-        const geo = await geocodeAddress(query);
-        if (geo) {
-          mergedForm = {
-            ...formData,
-            lat: geo.lat !== undefined ? String(geo.lat) : formData.lat,
-            lon: geo.lon !== undefined ? String(geo.lon) : formData.lon,
-            endereco: geo.logradouro || formData.endereco,
-            numero: formData.numero?.trim() ? formData.numero : geo.numeroEncontrado || formData.numero,
-            bairro: geo.bairro || formData.bairro,
-            cidade: geo.cidade || formData.cidade,
-            estado: geo.estado || formData.estado,
-            cep: geo.cepEncontrado || formData.cep,
-          };
-          setFormData(mergedForm);
-        }
+      let mergedForm = { ...baseForm };
+        if (query) {
+          const geo = await geocodeAddress(query);
+          if (geo) {
+            mergedForm = {
+              ...baseForm,
+              lat: geo.lat !== undefined ? String(geo.lat) : baseForm.lat,
+              lon: geo.lon !== undefined ? String(geo.lon) : baseForm.lon,
+              endereco: geo.logradouro || baseForm.endereco,
+              numero: baseForm.numero?.trim() ? baseForm.numero : geo.numeroEncontrado || baseForm.numero,
+              bairro: geo.bairro || baseForm.bairro,
+              cidade: geo.cidade || baseForm.cidade,
+              estado: geo.estado || baseForm.estado,
+              cep: geo.cepEncontrado || baseForm.cep,
+            };
+            setFormData(mergedForm);
+          }
       }
 
       const payload = buildCelulaPayload(mergedForm, diasSelecionados);
