@@ -2,6 +2,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import AtualizarCelula from "@/pages/AtualizarCelula";
+import LiderCelula from "@/pages/LiderCelula";
 import Links from "@/pages/Links";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -26,6 +27,7 @@ function Router() {
       <Route path={"/pix-confirmacao"} component={PixConfirmation} />
       <Route path={"/ticket/:orderCode"} component={Ticket} />
       <Route path={"/celulas/atualizar"} component={AtualizarCelula} />
+      <Route path={"/celulas/lider"} component={LiderCelula} />
       <Route path={"/links"} component={Links} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}

@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import { Calendar, MapPin, Users, Download, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import QRCode from 'qrcode';
@@ -123,6 +122,10 @@ const formatEventDateRange = (event: Registration['event']) => {
 
   return formatEventDateLabel(event);
 };
+
+const TicketDivider = () => (
+  <div className="h-px w-full bg-border/50" role="presentation" />
+);
 
 const detectPdfImageFormat = (dataUrl: string): 'PNG' | 'JPEG' | 'WEBP' => {
   const match = dataUrl.match(/^data:image\/([^;]+);base64,/i);
@@ -594,7 +597,7 @@ export default function Ticket() {
                 </div>
               </>
             )}
-            <Separator />
+            <TicketDivider />
 
             {/* Inscritos */}
             <div className="space-y-3">
@@ -625,7 +628,7 @@ export default function Ticket() {
               </div>
             </div>
 
-            <Separator />
+            <TicketDivider />
 
             {/* Total */}
             <div className="flex justify-between items-center text-lg font-bold">
