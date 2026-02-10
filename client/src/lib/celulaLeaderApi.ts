@@ -19,6 +19,7 @@ export interface LeaderSummary {
   numero?: string;
   bairro?: string;
   cep?: string;
+  escolaridade?: string;
   foto?: string;
   image?: string;
   spouse?: LeaderSummary;
@@ -76,6 +77,7 @@ export interface UpsertLeaderPayload {
   numero?: string;
   bairro?: string;
   cep?: string;
+  escolaridade?: string;
   image?: string;
 }
 

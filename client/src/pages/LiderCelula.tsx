@@ -25,6 +25,16 @@ const MARITAL_OPTIONS = [
   { value: 'separado', label: 'Separado(a)' },
 ];
 
+const EDUCATION_OPTIONS = [
+  'ANALFABETO',
+  'ENSINO FUNDAMENTAL INCOMPLETO',
+  'ENSINO FUNDAMENTAL COMPLETO',
+  'ENSINO MÉDIO INCOMPLETO',
+  'ENSINO MÉDIO COMPLETO',
+  'ENSINO SUPERIOR INCOMPLETO',
+  'ENSINO SUPERIOR COMPLETO',
+];
+
 const SCHOOL_OPTIONS = [
   'Escola de Fundamentos',
   'Liderança Avançada 1',
@@ -226,6 +236,7 @@ type LeaderForm = {
   batizado: boolean;
   encontro: boolean;
   escolas: string[];
+  escolaridade: string;
   endereco: string;
   numero: string;
   bairro: string;
@@ -249,6 +260,7 @@ const initialLeaderForm: LeaderForm = {
   numero: '',
   bairro: '',
   cep: '',
+  escolaridade: '',
   foto: undefined,
 };
 
@@ -346,6 +358,7 @@ export default function LiderCelula() {
           batizado: fallbackLeader.batizado ?? prev.batizado,
           encontro: fallbackLeader.encontro ?? prev.encontro,
           escolas: fallbackLeader.escolas ?? prev.escolas,
+          escolaridade: fallbackLeader.escolaridade ?? prev.escolaridade,
           endereco: fallbackLeader.endereco ?? prev.endereco,
           numero: fallbackLeader.numero ?? prev.numero,
           bairro: fallbackLeader.bairro ?? prev.bairro,
@@ -395,6 +408,7 @@ export default function LiderCelula() {
         batizado: effectiveLeader?.batizado ?? prev.batizado,
         encontro: effectiveLeader?.encontro ?? prev.encontro,
         escolas: effectiveLeader?.escolas ?? prev.escolas,
+        escolaridade: effectiveLeader?.escolaridade ?? prev.escolaridade,
         endereco: effectiveLeader?.endereco ?? prev.endereco,
         numero: effectiveLeader?.numero ?? prev.numero,
         bairro: effectiveLeader?.bairro ?? prev.bairro,
@@ -609,6 +623,7 @@ export default function LiderCelula() {
         numero: leaderForm.numero || undefined,
         bairro: leaderForm.bairro || undefined,
         cep: leaderForm.cep || undefined,
+        escolaridade: leaderForm.escolaridade || undefined,
         image:
           finalPhotoDataUrl?.replace(/^data:image\/[^;]+;base64,/, '') ??
           (photoDataUrl ? photoDataUrl.replace(/^data:image\/[^;]+;base64,/, '') : undefined),
@@ -915,6 +930,22 @@ export default function LiderCelula() {
                   {MARITAL_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="leader-education">Escolaridade</Label>
+                <select
+                  id="leader-education"
+                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
+                  value={leaderForm.escolaridade}
+                  onChange={(event) => handleLeaderInput('escolaridade')(event.target.value)}
+                >
+                  <option value="">Selecione</option>
+                  {EDUCATION_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
                     </option>
                   ))}
                 </select>

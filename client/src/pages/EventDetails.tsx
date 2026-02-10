@@ -70,7 +70,8 @@ export default function EventDetails() {
   const [lotes, setLotes] = useState<EventBatch[]>([]);
   const [campos, setCampos] = useState<FormField[]>([]);
   const [formasPagamento, setFormasPagamento] = useState<PaymentOption[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingEvent, setLoadingEvent] = useState(true);
+  const [loadingDetails, setLoadingDetails] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   // Estado do formulário
@@ -213,23 +214,39 @@ export default function EventDetails() {
   };
 
   const carregarDados = async () => {
+    setLoadingEvent(true);
+    setLoadingDetails(true);
+    const lotesPromise = listarLotesPublicos(eventId);
+    const camposPromise = listarCamposFormulario(eventId);
+    const formasPromise = buscarFormasPagamento(eventId);
+
     try {
-      setLoading(true);
-      const [eventoData, lotesData, camposData, formasPagamentoData] = await Promise.all([
-        buscarEventoPublico(eventId),
-        listarLotesPublicos(eventId),
-        listarCamposFormulario(eventId),
-        buscarFormasPagamento(eventId),
-      ]);
+      const eventoData = await buscarEventoPublico(eventId);
       setEvento(eventoData);
+    } catch (error) {
+      console.error('Erro ao carregar evento:', error);
+      toast.error('Erro ao carregar evento');
+      setLoadingEvent(false);
+      setLoadingDetails(false);
+      return;
+    } finally {
+      setLoadingEvent(false);
+    }
+
+    try {
+      const [lotesData, camposData, formasPagamentoData] = await Promise.all([
+        lotesPromise,
+        camposPromise,
+        formasPromise,
+      ]);
       setLotes(lotesData.filter((l) => l.isActive));
       setCampos(camposData);
       setFormasPagamento(formasPagamentoData.filter((f) => f.isActive));
     } catch (error) {
-      console.error('Erro ao carregar dados:', error);
-      toast.error('Erro ao carregar evento');
+      console.error('Erro ao carregar detalhes do evento:', error);
+      toast.error('Erro ao carregar lotes ou campos do evento');
     } finally {
-      setLoading(false);
+      setLoadingDetails(false);
     }
   };
 
@@ -309,15 +326,15 @@ export default function EventDetails() {
 
     let total = subtotal - calcularDesconto(subtotal);
 
-    // Aplicar juros se houver parcelas
+    // Aplicar taxas se houver parcelas
     if (formaPagamento && installments > 1) {
     const pagamento = findPaymentOption(formaPagamento);
       if (pagamento && pagamento.interestRate > 0) {
         if (pagamento.interestType === 'percentage') {
-          // Juros percentual por parcela
+          // Taxas percentual por parcela
           total += total * (Number(pagamento.interestRate) / 100) * (installments - 1);
         } else {
-          // Juros fixo por parcela
+          // Taxas fixo por parcela
           total += Number(pagamento.interestRate) * (installments - 1);
         }
       }
@@ -609,17 +626,17 @@ export default function EventDetails() {
   const cupomDigitado = cupomCodigo.trim();
   const subtotal = calcularSubtotal();
   const desconto = calcularDesconto(subtotal);
-  const totalComJuros = calcularValorTotal();
-  const jurosAplicados = Math.max(0, totalComJuros - Math.max(0, subtotal - desconto));
+  const totalComTaxas = calcularValorTotal();
+  const taxasAplicados = Math.max(0, totalComTaxas - Math.max(0, subtotal - desconto));
   const selectedPaymentOption = findPaymentOption(formaPagamento);
   const valorPagamentoNumero = parseValorPagamento();
   const pagamentoAgora =
     evento?.registrationPaymentMode === 'BALANCE_DUE' && valorPagamentoNumero > 0
       ? valorPagamentoNumero
-      : totalComJuros;
+      : totalComTaxas;
   const saldoEstimado =
     evento?.registrationPaymentMode === 'BALANCE_DUE'
-      ? Math.max(0, totalComJuros - pagamentoAgora)
+      ? Math.max(0, totalComTaxas - pagamentoAgora)
       : 0;
 
   useEffect(() => {
@@ -629,20 +646,20 @@ export default function EventDetails() {
       return;
     }
     if (valorPagamentoEditado) return;
-    if (!totalComJuros) {
+    if (!totalComTaxas) {
       setValorPagamento('');
       return;
     }
-    const sugerido = evento.depositAmount ?? totalComJuros;
+    const sugerido = evento.depositAmount ?? totalComTaxas;
     setValorPagamento(sugerido.toFixed(2));
   }, [
     evento?.registrationPaymentMode,
     evento?.depositAmount,
-    totalComJuros,
+    totalComTaxas,
     valorPagamentoEditado,
   ]);
 
-  if (loading) {
+  if (loadingEvent) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -926,20 +943,20 @@ export default function EventDetails() {
                     <span>- R$ {Math.min(desconto, subtotal).toFixed(2)}</span>
                   </div>
                 )}
-                {jurosAplicados > 0 && (
+                {taxasAplicados > 0 && (
                   <div className="flex justify-between text-orange-600">
-                    <span>Juros:</span>
-                    <span>+ R$ {jurosAplicados.toFixed(2)}</span>
+                    <span>Taxas:</span>
+                    <span>+ R$ {taxasAplicados.toFixed(2)}</span>
                   </div>
                 )}
                 <Separator />
                 <div className="flex justify-between font-bold text-lg">
                   <span>Total:</span>
-                  <span>R$ {totalComJuros.toFixed(2)}</span>
+                  <span>R$ {totalComTaxas.toFixed(2)}</span>
                 </div>
                 {formaPagamento && parcelas > 1 && (
                   <div className="text-sm text-muted-foreground">
-                    Parcelado em {parcelas}x de R$ {(totalComJuros / parcelas).toFixed(2)}
+                    Parcelado em {parcelas}x de R$ {(totalComTaxas / parcelas).toFixed(2)}
                   </div>
                 )}
               </div>
@@ -999,7 +1016,7 @@ export default function EventDetails() {
                         type="number"
                         min="0"
                         step="0.01"
-                        max={totalComJuros}
+                        max={totalComTaxas}
                         value={valorPagamento}
                         onChange={(e) => {
                           setValorPagamento(e.target.value);
@@ -1028,7 +1045,7 @@ export default function EventDetails() {
                         type="button"
                         variant="outline"
                         onClick={() => {
-                          setValorPagamento(totalComJuros.toFixed(2));
+                          setValorPagamento(totalComTaxas.toFixed(2));
                           setValorPagamentoEditado(true);
                         }}
                       >
@@ -1054,11 +1071,11 @@ export default function EventDetails() {
                           const pagamento = selectedPaymentOption;
                           const totalParcelado = calcularValorTotal(p);
                           const valorParcela = totalParcelado / p;
-                          const semJuros = !pagamento || pagamento.interestRate === 0 || p === 1;
+                          const semTaxas = !pagamento || pagamento.interestRate === 0 || p === 1;
                           return (
                             <SelectItem key={p} value={p.toString()}>
                               {p}x de R$ {valorParcela.toFixed(2)}
-                              {semJuros ? ' sem juros' : ` (${pagamento.interestRate}% ${pagamento.interestType === 'percentage' ? 'a.m.' : 'fixo'})`}
+                              {semTaxas ? ' sem taxas' : ` (${pagamento.interestRate}% ${pagamento.interestType === 'percentage' ? 'a.m.' : 'fixo'})`}
                             </SelectItem>
                           );
                         })}

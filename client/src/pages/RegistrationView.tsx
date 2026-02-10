@@ -255,7 +255,7 @@ export default function RegistrationView() {
       ? selectedPaymentOption.interestType === 'percentage'
         ? `${selectedPaymentOption.interestRate}% ao mês`
         : `R$ ${selectedPaymentOption.interestRate.toFixed(2)} fixo`
-      : 'Sem juros';
+      : 'Sem taxas';
 
   useEffect(() => {
     if (method === 'credit_card' && installments > maxInstallments) {
@@ -507,7 +507,7 @@ export default function RegistrationView() {
                 Após o pagamento, esta tela será atualizada automaticamente.
               </p>
               {registration.pixQrCode && (
-                <div className="w-full max-w-xl space-y-2">
+                  <div className="w-full max-w-xl space-y-[5px]">
                   <Label className="text-xs uppercase tracking-wide">Código PIX</Label>
                   <div className="flex gap-2">
                     <Input value={registration.pixQrCode} readOnly className="flex-1" />
@@ -560,7 +560,7 @@ export default function RegistrationView() {
             <CardContent>
               <form onSubmit={handleSubmitPayment} className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
+                  <div className="space-y-[5px]">
                     <Label htmlFor="payment-amount">Valor do pagamento</Label>
                     <Input
                       id="payment-amount"
@@ -596,7 +596,7 @@ export default function RegistrationView() {
                       Saldo restante: {formatCurrency(registration.remaining)}
                     </p>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-[5px]">
                     <Label>Método de pagamento</Label>
                     <Select value={method} onValueChange={(value) => setMethod(value as 'pix' | 'credit_card')}>
                       <SelectTrigger>
@@ -634,7 +634,7 @@ export default function RegistrationView() {
                                 ? option.interestType === 'percentage'
                                   ? `${option.interestRate}% ao mês`
                                   : `R$ ${option.interestRate.toFixed(2)} fixo`
-                                : 'Sem juros';
+                                : 'Sem taxas';
                             return (
                               <SelectItem key={option.id} value={option.id}>
                                 {methodLabel} — {interestText}
@@ -654,7 +654,7 @@ export default function RegistrationView() {
             {showCreditCardFields && selectedPaymentOption && (
               <div className="space-y-6 pt-4 border-t">
                 {maxInstallments > 1 && (
-                  <div className="space-y-2">
+                  <div className="space-y-[5px]">
                     <Label>Número de parcelas</Label>
                     <Select value={installments.toString()} onValueChange={(value) => setInstallments(Number(value))}>
                       <SelectTrigger>
@@ -668,14 +668,14 @@ export default function RegistrationView() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-muted-foreground">Juros do plano: {interestDescription}</p>
+                    <p className="text-xs text-muted-foreground">Taxas do plano: {interestDescription}</p>
                   </div>
                 )}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="text-sm font-medium">Dados do Cartão</h4>
                     <span className="text-xs text-muted-foreground">
-                      {selectedPaymentOption.interestRate > 0 ? 'Pagamento com juros' : 'Sem juros'}
+                      {selectedPaymentOption.interestRate > 0 ? 'Pagamento com taxas' : 'Sem taxas'}
                     </span>
                   </div>
                   <div>
@@ -731,7 +731,7 @@ export default function RegistrationView() {
               </div>
             )}
             {method === 'pix' && (
-              <div className="space-y-2 rounded-lg border border-dashed border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+              <div className="space-y-[5px] rounded-lg border border-dashed border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
                 <p>
                   Após gerar o pagamento via PIX, o QR Code será exibido abaixo para você concluir o pagamento
                   diretamente pelo seu aplicativo bancário.

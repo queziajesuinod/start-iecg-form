@@ -6,12 +6,17 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, MapPin, Users, Loader2 } from 'lucide-react';
 import { listarEventosPublicos, listarLotesPublicos, type Event } from '@/lib/eventsApi';
-import { hasActiveBatchNow } from '@/lib/eventUtils';
+import { getActiveBatches, sumAvailableSeats } from '@/lib/eventUtils';
 
 export default function EventList() {
   const [, setLocation] = useLocation();
   const [eventos, setEventos] = useState<Event[]>([]);
-  const [batchAvailability, setBatchAvailability] = useState<Record<string, boolean>>({});
+  type BatchAvailability = {
+    hasActiveBatch: boolean;
+    availableSeats: number | null;
+    activeBatchNames: string[];
+  };
+  const [batchAvailability, setBatchAvailability] = useState<Record<string, BatchAvailability>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,20 +50,32 @@ export default function EventList() {
       eventos.map(async (evento) => {
         try {
           const lotes = await listarLotesPublicos(evento.id);
+          const activeBatches = getActiveBatches(lotes, hoje);
           return {
             id: evento.id,
-            hasActiveBatch: hasActiveBatchNow(lotes, hoje),
+            hasActiveBatch: activeBatches.length > 0,
+            availableSeats: sumAvailableSeats(activeBatches),
+            activeBatchNames: activeBatches.map((batch) => batch.name).filter(Boolean),
           };
         } catch (batchError) {
           console.error('Erro ao verificar lotes do evento:', evento.id, batchError);
-          return { id: evento.id, hasActiveBatch: false };
+          return {
+            id: evento.id,
+            hasActiveBatch: false,
+            availableSeats: null,
+            activeBatchNames: [],
+          };
         }
       })
     );
 
-    const availabilityByEvent: Record<string, boolean> = {};
-    availabilityEntries.forEach(({ id, hasActiveBatch }) => {
-      availabilityByEvent[id] = hasActiveBatch;
+    const availabilityByEvent: Record<string, BatchAvailability> = {};
+    availabilityEntries.forEach((entry) => {
+      availabilityByEvent[entry.id] = {
+        hasActiveBatch: entry.hasActiveBatch,
+        availableSeats: entry.availableSeats,
+        activeBatchNames: entry.activeBatchNames,
+      };
     });
     setBatchAvailability(availabilityByEvent);
   };
@@ -130,22 +147,18 @@ export default function EventList() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {eventos.map((evento) => {
-                  const vagasDisponiveis = calcularVagasDisponiveis(evento);
-                  const esgotado = vagasDisponiveis !== null && vagasDisponiveis <= 0;
-                  const possuiLoteAtivo = batchAvailability[evento.id];
-                  const podeIrDetalhes = !esgotado && (possuiLoteAtivo ?? true);
-                  const botaoLabel = esgotado
-                    ? 'Esgotado'
-                    : possuiLoteAtivo === false
-                    ? 'Encerrado'
-                    : 'Ver Detalhes';
+              const vagasDisponiveis = calcularVagasDisponiveis(evento);
+              const esgotado = vagasDisponiveis !== null && vagasDisponiveis <= 0;
+              const availability = batchAvailability[evento.id];
+              const possuiLoteAtivo = availability?.hasActiveBatch ?? false;
+              const podeIrDetalhes = possuiLoteAtivo && !esgotado;
+              const botaoLabel = esgotado ? 'Esgotado' : possuiLoteAtivo ? 'Ver Detalhes' : 'Encerrado';
 
-                  return (
-                    <Card
-                      key={evento.id}
-                      className="hover:shadow-xl transition-shadow duration-300 flex flex-col pt-0"
-                    >
-                  {/* Imagem do Evento */}
+              return (
+                <Card
+                  key={evento.id}
+                  className="hover:shadow-xl transition-shadow duration-300 flex flex-col pt-0"
+                >
                   {evento.imageUrl && (
                     <AspectRatio ratio={16 / 9} className="overflow-hidden rounded-t-lg">
                       <img
@@ -165,29 +178,25 @@ export default function EventList() {
                         </Badge>
                       )}
                     </div>
-                    <CardDescription className="line-clamp-2">
-                      {evento.description}
-                    </CardDescription>
+                    <CardDescription className="line-clamp-2">{evento.description}</CardDescription>
                   </CardHeader>
 
                   <CardContent className="flex-1 space-y-3">
-                    {/* Data */}
                     <div className="flex items-center gap-2 text-sm text-gray-600">
                       <Calendar className="h-4 w-4" />
                       <span>{formatarData(evento.startDate)}</span>
                     </div>
 
-                    {/* Local */}
                     {evento.location && (
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <MapPin className="h-4 w-4" />
                         <span>{evento.location}</span>
                       </div>
                     )}
-
                   </CardContent>
 
-                  <CardFooter>
+                  <CardFooter className="flex flex-col gap-2">
+                   
                     <Button
                       onClick={() => setLocation(`/eventos/${evento.id}`)}
                       disabled={!podeIrDetalhes}
