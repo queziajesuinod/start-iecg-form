@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'wouter';
-import { AspectRatio } from '@radix-ui/react-aspect-ratio';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -95,7 +94,17 @@ export default function EventDetails() {
     expirationDate: '',
     securityCode: '',
   });
-  const lotesAtivosNoRange = lotes.filter((lote) => isBatchActiveNow(lote));
+  const lotesAtivosNoRange = useMemo(
+    () => lotes.filter((lote) => isBatchActiveNow(lote)),
+    [lotes]
+  );
+  const lotesById = useMemo(() => {
+    const map = new Map<string, EventBatch>();
+    for (const lote of lotes) {
+      map.set(lote.id, lote);
+    }
+    return map;
+  }, [lotes]);
   const findPaymentOption = (value?: string) =>
     formasPagamento.find((forma) => forma.id.toString() === value);
 
@@ -192,7 +201,6 @@ export default function EventDetails() {
     if (!inscrito) return;
 
     // Validar campos obrigatórios
-    const camposInscrito = campos.filter((c) => c.section === 'attendee');
     for (const campo of camposInscrito) {
       if (campo.isRequired && !inscrito.dados[campo.fieldName]) {
         toast.error(`Campo obrigatório: ${campo.label}`);
@@ -307,7 +315,7 @@ export default function EventDetails() {
   const calcularSubtotal = () =>
     inscritos.reduce((sum, inscrito) => {
       if (!inscrito.batchId) return sum;
-      const lote = lotes.find((l) => l.id === inscrito.batchId);
+      const lote = lotesById.get(inscrito.batchId);
       return sum + (lote ? Number(lote.price) : 0);
     }, 0);
 
@@ -354,7 +362,6 @@ export default function EventDetails() {
     }
 
     // Validar campos do comprador
-    const camposComprador = campos.filter((c) => c.section === 'buyer');
     for (const campo of camposComprador) {
       if (campo.isRequired && !dadosComprador[campo.fieldName]) {
         toast.error(`Campo obrigatório: ${campo.label}`);
@@ -369,23 +376,23 @@ export default function EventDetails() {
       return false;
     }
 
-    // Validar forma de pagamento selecionada
-    if (!formaPagamento) {
+    // Validar forma de pagamento selecionada (somente quando ha valor a pagar)
+    if (requiresPayment && !formaPagamento) {
       toast.error('Selecione uma forma de pagamento');
       return false;
     }
 
-    // Validar dados de pagamento apenas para cartão de crédito
+    // Validar dados de pagamento apenas para cartao de credito
     const formaSelecionada = findPaymentOption(formaPagamento);
-    if (formaSelecionada?.paymentType === 'credit_card') {
+    if (requiresPayment && formaSelecionada?.paymentType === 'credit_card') {
       if (!dadosPagamento.cardNumber || !dadosPagamento.cardHolder || 
           !dadosPagamento.expirationDate || !dadosPagamento.securityCode) {
-        toast.error('Preencha todos os dados do cartão');
+        toast.error('Preencha todos os dados do cartao');
         return false;
       }
     }
 
-    if (evento?.registrationPaymentMode === 'BALANCE_DUE') {
+    if (requiresPayment && evento?.registrationPaymentMode === 'BALANCE_DUE') {
       const total = calcularValorTotal();
       const valor = parseValorPagamento();
       if (!valor || valor <= 0) {
@@ -452,15 +459,21 @@ export default function EventDetails() {
           data: i.dados
         })),
         couponCode: cupomValido ? cupomCodigo.trim() : undefined,
-        paymentOptionId: formaPagamento,
-        paymentData: {
-          ...dadosPagamento,
-          installments: parcelas,
-          amount: pagamentoInicial,
-        },
+        paymentOptionId: requiresPayment ? formaPagamento : undefined,
+        paymentData: requiresPayment
+          ? {
+              ...dadosPagamento,
+              installments: parcelas,
+              amount: pagamentoInicial,
+            }
+          : undefined,
       });
 
     if (resultado.sucesso) {
+      if (!requiresPayment) {
+        setLocation(`/ticket/${resultado.orderCode}`);
+        return;
+      }
       const formaPagamentoSelecionada = findPaymentOption(formaPagamento);
       console.log('=== DEBUG REDIRECIONAMENTO ==>');
       console.log('formaPagamento (ID selecionado):', formaPagamento);
@@ -481,6 +494,21 @@ export default function EventDetails() {
             pixCode
           )}&qrCode=${encodeURIComponent(qrCode)}`
         );
+        toast.info('Aguardando confirmação do PIX...');
+        setTimeout(async () => {
+          try {
+            const registration = await consultarInscricao(resultado.orderCode);
+            const status = registration.paymentStatus;
+            if (status === 'confirmed' || status === 'paid') {
+              setLocation(`/ticket/${resultado.orderCode}`);
+            } else {
+              setLocation(`/inscricao/${resultado.orderCode}`);
+            }
+          } catch (error) {
+            console.error('Erro ao verificar pagamento do PIX:', error);
+            setLocation(`/inscricao/${resultado.orderCode}`);
+          }
+        }, 5000);
       } else {
         console.log('ENTRANDO NO ELSE (CARTÃO)');
         await verificarPagamentoCartao(resultado.orderCode, resultado);
@@ -620,15 +648,26 @@ export default function EventDetails() {
     }
   };
 
-  const camposComprador = campos.filter((c) => c.section === 'buyer').sort((a, b) => a.orderIndex - b.orderIndex);
-  const camposInscrito = campos.filter((c) => c.section === 'attendee').sort((a, b) => a.orderIndex - b.orderIndex);
+  const camposComprador = useMemo(
+    () => campos.filter((c) => c.section === 'buyer').sort((a, b) => a.orderIndex - b.orderIndex),
+    [campos]
+  );
+  const camposInscrito = useMemo(
+    () => campos.filter((c) => c.section === 'attendee').sort((a, b) => a.orderIndex - b.orderIndex),
+    [campos]
+  );
   const hasLoteSelecionado = inscritos.some((i) => Boolean(i.batchId));
   const cupomDigitado = cupomCodigo.trim();
   const subtotal = calcularSubtotal();
   const desconto = calcularDesconto(subtotal);
   const totalComTaxas = calcularValorTotal();
   const taxasAplicados = Math.max(0, totalComTaxas - Math.max(0, subtotal - desconto));
-  const selectedPaymentOption = findPaymentOption(formaPagamento);
+  const selectedPaymentOption = useMemo(
+    () => findPaymentOption(formaPagamento),
+    [formasPagamento, formaPagamento]
+  );
+  const requiresPayment = totalComTaxas > 0;
+  const paymentUnavailableEffective = !hasLotAvailable || (requiresPayment && formasPagamento.length === 0);
   const valorPagamentoNumero = parseValorPagamento();
   const pagamentoAgora =
     evento?.registrationPaymentMode === 'BALANCE_DUE' && valorPagamentoNumero > 0
@@ -638,6 +677,10 @@ export default function EventDetails() {
     evento?.registrationPaymentMode === 'BALANCE_DUE'
       ? Math.max(0, totalComTaxas - pagamentoAgora)
       : 0;
+  const cardNumberDisplay = dadosPagamento.cardNumber?.trim() || '•••• •••• •••• ••••';
+  const cardHolderDisplay = dadosPagamento.cardHolder?.trim() || 'NOME COMPLETO';
+  const cardExpDisplay = dadosPagamento.expirationDate?.trim() || 'MM/AAAA';
+  const cardCvvDisplay = dadosPagamento.securityCode?.trim() || '•••';
 
   useEffect(() => {
     if (evento?.registrationPaymentMode !== 'BALANCE_DUE') {
@@ -691,13 +734,13 @@ export default function EventDetails() {
           {/* Informações do Evento */}
           <Card className="overflow-hidden pt-0">
             {evento.imageUrl && (
-              <AspectRatio ratio={16 / 9} className="w-full bg-slate-100">
+              <div className="flex justify-center pt-6">
                 <img
                   src={evento.imageUrl}
                   alt={evento.title}
-                  className="w-full h-full object-cover"
+                  className="h-40 w-40 rounded-full object-cover border-4 border-white shadow-md"
                 />
-              </AspectRatio>
+              </div>
             )}
             <CardHeader className="pt-6">
               <CardTitle className="text-3xl">{evento.title}</CardTitle>
@@ -730,7 +773,7 @@ export default function EventDetails() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {camposComprador.map((campo) => (
-                  <div key={campo.id}>
+                  <div key={campo.id} className="space-y-2">
                     <Label htmlFor={campo.fieldName}>
                       {campo.label}
                       {campo.isRequired && <span className="text-red-500 ml-1">*</span>}
@@ -837,7 +880,7 @@ export default function EventDetails() {
                           </div>
                           
                           {camposInscrito.map((campo) => (
-                            <div key={campo.id}>
+                            <div key={campo.id} className="space-y-2">
                               <Label htmlFor={`${campo.fieldName}-${inscrito.id}`}>
                                 {campo.label}
                                 {campo.isRequired && <span className="text-red-500 ml-1">*</span>}
@@ -965,20 +1008,21 @@ export default function EventDetails() {
         </Card>
 
         {/* Forma de Pagamento */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5" />
-              Forma de Pagamento
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {formasPagamento.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Nenhuma forma de pagamento ativa foi encontrada para este evento.
-              </p>
-            ) : (
-              <>
+        {requiresPayment && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CreditCard className="h-5 w-5" />
+                Forma de Pagamento
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {formasPagamento.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Nenhuma forma de pagamento ativa foi encontrada para este evento.
+                </p>
+              ) : (
+                <>
                 <div>
                   <Label>Selecione a forma de pagamento</Label>
                   <Select
@@ -1084,59 +1128,101 @@ export default function EventDetails() {
                   </div>
                 )}
                 
-                {/* Dados do Cartão (apenas para cartão) */}
+                {/* Dados do Cartao (apenas para cartao) */}
                 {formaPagamento && selectedPaymentOption?.paymentType === 'credit_card' && (
                   <div className="space-y-4 pt-4 border-t">
-                    <h4 className="font-medium">Dados do Cartão</h4>
-                    <div>
-                      <Label>Número do Cartão</Label>
-                      <Input
-                        placeholder="0000 0000 0000 0000"
-                        value={dadosPagamento.cardNumber}
-                        onChange={(e) => {
-                          const masked = maskCreditCard(e.target.value);
-                          setDadosPagamento({ ...dadosPagamento, cardNumber: masked });
-                        }}
-                        maxLength={19}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <Label>Nome no Cartão</Label>
-                      <Input
-                        placeholder="NOME COMPLETO"
-                        value={dadosPagamento.cardHolder}
-                        onChange={(e) => setDadosPagamento({ ...dadosPagamento, cardHolder: e.target.value.toUpperCase() })}
-                        required
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label>Validade (MM/AAAA)</Label>
-                        <Input
-                          placeholder="12/2030"
-                          value={dadosPagamento.expirationDate}
-                          onChange={(e) => {
-                            const masked = maskCardExpiry(e.target.value);
-                            setDadosPagamento({ ...dadosPagamento, expirationDate: masked });
-                          }}
-                          maxLength={7}
-                          required
-                        />
+                    <h4 className="font-medium">Dados do Cartao</h4>
+                    <div className="grid gap-6 md:grid-cols-[1fr,360px] md:items-start">
+                      <div className="space-y-4">
+                        <div>
+                          <Label>Numero do Cartao</Label>
+                          <Input
+                            placeholder="0000 0000 0000 0000"
+                            value={dadosPagamento.cardNumber}
+                            onChange={(e) => {
+                              const masked = maskCreditCard(e.target.value);
+                              setDadosPagamento({ ...dadosPagamento, cardNumber: masked });
+                            }}
+                            maxLength={19}
+                            required
+                          />
+                        </div>
+                        <div>
+                          <Label>Nome no Cartao</Label>
+                          <Input
+                            placeholder="NOME COMPLETO"
+                            value={dadosPagamento.cardHolder}
+                            onChange={(e) =>
+                              setDadosPagamento({
+                                ...dadosPagamento,
+                                cardHolder: e.target.value.toUpperCase(),
+                              })
+                            }
+                            required
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <Label>Validade (MM/AAAA)</Label>
+                            <Input
+                              placeholder="12/2030"
+                              value={dadosPagamento.expirationDate}
+                              onChange={(e) => {
+                                const masked = maskCardExpiry(e.target.value);
+                                setDadosPagamento({ ...dadosPagamento, expirationDate: masked });
+                              }}
+                              maxLength={7}
+                              required
+                            />
+                          </div>
+                          <div>
+                            <Label>CVV</Label>
+                            <Input
+                              placeholder="123"
+                              type="password"
+                              value={dadosPagamento.securityCode}
+                              onChange={(e) => {
+                                const masked = maskCVV(e.target.value);
+                                setDadosPagamento({ ...dadosPagamento, securityCode: masked });
+                              }}
+                              maxLength={4}
+                              required
+                            />
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <Label>CVV</Label>
-                        <Input
-                          placeholder="123"
-                          type="password"
-                          value={dadosPagamento.securityCode}
-                          onChange={(e) => {
-                            const masked = maskCVV(e.target.value);
-                            setDadosPagamento({ ...dadosPagamento, securityCode: masked });
-                          }}
-                          maxLength={4}
-                          required
-                        />
+                      <div className="w-full md:justify-self-end">
+                        <div className="mx-auto w-full max-w-[360px]">
+                          <div className="relative aspect-[1.586] w-full overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 p-5 text-white shadow-lg">
+                        <div className="absolute right-5 top-5 h-10 w-16 rounded-md border border-white/15 bg-white/10" />
+                        <div className="flex items-center justify-between">
+                          <div className="h-9 w-12 rounded-md bg-gradient-to-br from-amber-300/90 to-amber-500/90 shadow-inner" />
+                          <div className="text-xs uppercase tracking-[0.3em] text-white/70">
+                            Cartão
+                          </div>
+                        </div>
+                        <div className="mt-6 text-xl font-semibold tracking-[0.2em]">
+                          {cardNumberDisplay}
+                        </div>
+                        <div className="mt-6 grid grid-cols-2 gap-4 text-[11px] uppercase text-white/70">
+                          <div>
+                            <div className="text-[10px] tracking-[0.4em] text-white/50">Titular</div>
+                            <div className="mt-1 text-sm text-white">{cardHolderDisplay}</div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <div className="text-[10px] tracking-[0.4em] text-white/50">Validade</div>
+                              <div className="mt-1 text-sm text-white">{cardExpDisplay}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] tracking-[0.4em] text-white/50">CVV</div>
+                              <div className="mt-1 text-sm text-white">{cardCvvDisplay}</div>
+                            </div>
+                          </div>
+                        </div>
+                          </div>
+                          
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1147,20 +1233,21 @@ export default function EventDetails() {
                   <div className="p-4 bg-blue-50 rounded-lg">
                     <p className="text-sm text-blue-900">
                       {selectedPaymentOption?.paymentType === 'pix'
-                        ? 'Após finalizar a inscrição, você receberá o QR Code do PIX para pagamento.'
-                        : 'Após finalizar a inscrição, você receberá o boleto para pagamento.'}
+                        ? 'Apos finalizar a inscrição, voce recebera o QR Code do PIX para pagamento.'
+                        : 'Apos finalizar a inscrição, voce recebera o boleto para pagamento.'}
                     </p>
                   </div>
                 )}
-              </>
-            )}
-          </CardContent>
-        </Card>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
-          {/* Botão de Envio */}
-          <Button type="submit" size="lg" className="w-full" disabled={submitting || paymentUnavailable}>
-            {paymentUnavailable ? (
-              !hasLotAvailable ? 'ENCERRADO' : 'Forma de pagamento indisponível'
+          {/* Botao de Envio */}
+          <Button type="submit" size="lg" className="w-full" disabled={submitting || paymentUnavailableEffective}>
+            {paymentUnavailableEffective ? (
+              !hasLotAvailable ? 'ENCERRADO' : 'Forma de pagamento indisponivel'
             ) : submitting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -1176,7 +1263,7 @@ export default function EventDetails() {
             <DialogHeader>
               <DialogTitle>Pagamento não autorizado</DialogTitle>
               <DialogDescription>
-                {cardDeniedMessage || 'Não foi possível autorizar a compra pelo cartão de crédito.'}
+                {cardDeniedMessage || 'Nao foi possivel autorizar a compra pelo cartao de crédito.'}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>

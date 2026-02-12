@@ -20,6 +20,7 @@ interface Registration {
   attendees: Array<{
     id: string;
     attendeeData: {
+      nome_completo?: string;
       nome_do_inscrito?: string;
       nome?: string;
     };
@@ -140,6 +141,36 @@ const detectPdfImageFormat = (dataUrl: string): 'PNG' | 'JPEG' | 'WEBP' => {
     return 'WEBP';
   }
   return 'PNG';
+};
+
+const createCircularPngDataUrl = async (dataUrl: string, size = 256): Promise<string | null> => {
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Imagem inválida'));
+      img.src = dataUrl;
+    });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    ctx.clearRect(0, 0, size, size);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(image, 0, 0, size, size);
+    ctx.restore();
+
+    return canvas.toDataURL('image/png');
+  } catch {
+    return null;
+  }
 };
 
 const normalizeStatus = (status?: string | null) =>
@@ -266,20 +297,35 @@ export default function Ticket() {
       const dateRangeLabel = formatEventDateRange(registration.event);
       const headerDetailText = `${dateRangeLabel} • ${safeText(registration.event.location)}`;
       let yOffset = margin;
+      const circularHeaderImageDataUrl = eventImageDataUrl
+        ? await createCircularPngDataUrl(eventImageDataUrl)
+        : null;
 
-      const headerImageSize = 60;
-      const headerTextGap = 12;
+      const headerImageSize = 48;
+      const headerTextGap = 10;
 
       const drawFullHeader = () => {
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(16);
+       
         const headerTextX = margin + headerImageSize + headerTextGap;
         const headerTextWidth = pageWidth - headerTextX - margin;
         const headerNameLines = pdf.splitTextToSize(
-          safeText(registration.event.name),
+          safeText(registration.event.title),
           headerTextWidth
         );
         const headerDetailLines = pdf.splitTextToSize(headerDetailText, headerTextWidth);
 
-        if (eventImageDataUrl) {
+        if (circularHeaderImageDataUrl) {
+          pdf.addImage(
+            circularHeaderImageDataUrl,
+            'PNG',
+            margin,
+            margin,
+            headerImageSize,
+            headerImageSize
+          );
+        } else if (eventImageDataUrl) {
           const format = detectPdfImageFormat(eventImageDataUrl);
           pdf.addImage(eventImageDataUrl, format, margin, margin, headerImageSize, headerImageSize);
         } else {
@@ -288,7 +334,7 @@ export default function Ticket() {
           pdf.rect(margin, margin, headerImageSize, headerImageSize, 'F');
           pdf.setFont('helvetica', 'bold');
           pdf.setFontSize(26);
-          const initial = (registration.event.name?.charAt(0) || '?').toUpperCase();
+          const initial = (registration.event.title?.charAt(0) || '?').toUpperCase();
           pdf.text(
             initial,
             margin + headerImageSize / 2,
@@ -300,22 +346,22 @@ export default function Ticket() {
         }
 
         pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(18);
-        const textStartY = margin + 18;
+        pdf.setFontSize(16);
+        const textStartY = margin + 16;
         headerNameLines.forEach((line, index) => {
-          pdf.text(line, headerTextX, textStartY + index * 8);
+          pdf.text(line, headerTextX, textStartY + index * 7);
         });
 
         pdf.setFont('helvetica', 'normal');
-        pdf.setFontSize(11);
-        const detailStartY = textStartY + headerNameLines.length * 8 + 6;
+        pdf.setFontSize(10);
+        const detailStartY = textStartY + headerNameLines.length * 7 + 5;
         headerDetailLines.forEach((line, index) => {
-          pdf.text(line, headerTextX, detailStartY + index * 6);
+          pdf.text(line, headerTextX, detailStartY + index * 5.5);
         });
 
-        const headerTextEndY = detailStartY + headerDetailLines.length * 6;
+        const headerTextEndY = detailStartY + headerDetailLines.length * 5.5;
         const headerHeight = Math.max(headerImageSize, headerTextEndY - margin);
-        yOffset = margin + headerHeight + 16;
+        yOffset = margin + headerHeight + 12;
 
         pdf.setDrawColor(200);
         pdf.setLineWidth(0.3);
@@ -329,20 +375,20 @@ export default function Ticket() {
         const miniWidth = pageWidth - margin * 2;
         pdf.setFont('helvetica', 'bold');
         pdf.setFontSize(14);
-        const titleLines = pdf.splitTextToSize(safeText(registration.event.name), miniWidth);
+        const titleLines = pdf.splitTextToSize(safeText(registration.event.title), miniWidth);
         titleLines.forEach((line, index) => {
-          pdf.text(line, margin, margin + 12 + index * 7);
+          pdf.text(line, margin, margin + 10 + index * 6);
         });
 
         pdf.setFont('helvetica', 'normal');
         pdf.setFontSize(10);
         const detailLines = pdf.splitTextToSize(headerDetailText, miniWidth);
-        const detailStartY = margin + 12 + titleLines.length * 7 + 6;
+        const detailStartY = margin + 10 + titleLines.length * 6 + 5;
         detailLines.forEach((line, index) => {
-          pdf.text(line, margin, detailStartY + index * 6);
+          pdf.text(line, margin, detailStartY + index * 5);
         });
 
-        yOffset = detailStartY + detailLines.length * 6 + 8;
+        yOffset = detailStartY + detailLines.length * 5 + 8;
         pdf.setDrawColor(200);
         pdf.setLineWidth(0.3);
         pdf.line(margin, yOffset - 6, pageWidth - margin, yOffset - 6);
@@ -353,62 +399,55 @@ export default function Ticket() {
 
       drawFullHeader();
 
-      const ensureSpace = (neededHeight: number) => {
-        if (yOffset + neededHeight > pageHeight - margin) {
-          pdf.addPage();
-          drawMiniHeader();
-        }
-      };
-
-      const qrSize = 60;
+      const attendeesPerPage = 4;
+      const cardHeight = 40;
+      const cardSpacing = 7;
+      const qrSize = 24;
       const qrX = pageWidth - margin - qrSize;
       const cardTextWidth = pageWidth - margin * 2 - qrSize - 14;
+      const requiredPageHeight =
+        attendeesPerPage * cardHeight + (attendeesPerPage - 1) * cardSpacing;
+      const pageBottomLimit = pageHeight - margin;
+      let attendeeIndexOnPage = 0;
+
+      if (yOffset + requiredPageHeight > pageBottomLimit) {
+        pdf.addPage();
+        drawMiniHeader();
+      }
 
       registration.attendees.forEach((attendee, index) => {
+        if (index > 0 && index % attendeesPerPage === 0) {
+          pdf.addPage();
+          drawMiniHeader();
+          attendeeIndexOnPage = 0;
+        }
+
         const participantName =
+          attendee.attendeeData.nome_completo ||
           attendee.attendeeData.nome_do_inscrito ||
           attendee.attendeeData.nome ||
           `Inscrito ${index + 1}`;
-        const nameLines = pdf.splitTextToSize(
+        const nameLine = pdf.splitTextToSize(
           `Participante: ${safeText(participantName)}`,
           cardTextWidth
-        );
-        const lotLines = pdf.splitTextToSize(
+        )[0];
+        const lotLine = pdf.splitTextToSize(
           `Lote: ${safeText(attendee.batch.name)}`,
           cardTextWidth
-        );
-        const textHeight =
-          nameLines.length * 7 +
-          lotLines.length * 6 +
-          18;
-        const cardHeight = Math.max(textHeight, qrSize + 30) + 24;
+        )[0];
 
-        ensureSpace(cardHeight + 6);
+        const cardTop = yOffset + attendeeIndexOnPage * (cardHeight + cardSpacing);
 
-        const cardTop = yOffset;
-        let currentY = cardTop + 14;
-
-        nameLines.forEach((line, lineIndex) => {
-          pdf.setFont('helvetica', lineIndex === 0 ? 'bold' : 'normal');
-          pdf.setFontSize(lineIndex === 0 ? 11 : 10);
-          pdf.text(line, margin, currentY);
-          currentY += 7;
-        });
-
-        currentY += 4;
-        pdf.setFont('helvetica', 'normal');
-        pdf.setFontSize(10);
-        lotLines.forEach((line) => {
-          pdf.text(line, margin, currentY);
-          currentY += 6;
-        });
-
-        currentY += 4;
         pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(11);
-        pdf.text(`Código: ${safeText(registration.orderCode)}`, margin, currentY);
+        pdf.setFontSize(9);
+        pdf.text(nameLine, margin, cardTop + 11);
 
-        const qrY = cardTop + 10;
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8);
+        pdf.text(lotLine, margin, cardTop + 18);
+        pdf.text(`Código: ${safeText(registration.orderCode)}`, margin, cardTop + 25);
+
+        const qrY = cardTop + (cardHeight - qrSize) / 2;
         const attendeeQr = attendeeQRCodes[attendee.id];
         if (attendeeQr) {
           pdf.addImage(attendeeQr, 'PNG', qrX, qrY, qrSize, qrSize);
@@ -419,21 +458,18 @@ export default function Ticket() {
         }
 
         pdf.setFont('helvetica', 'normal');
-        pdf.setFontSize(9);
-        pdf.text('Apresente na entrada', qrX + qrSize / 2, qrY + qrSize + 6, {
-          align: 'center',
-        });
-        pdf.text(safeText(registration.orderCode), qrX + qrSize / 2, qrY + qrSize + 11, {
+        pdf.setFontSize(7);
+        pdf.text(`${index + 1}/${registration.attendees.length}`, qrX + qrSize / 2, cardTop + cardHeight - 4, {
           align: 'center',
         });
 
         pdf.setLineDash([3, 1]);
         pdf.setDrawColor(200);
-        pdf.line(margin, cardTop + cardHeight - 6, pageWidth - margin, cardTop + cardHeight - 6);
+        pdf.line(margin, cardTop + cardHeight, pageWidth - margin, cardTop + cardHeight);
         pdf.setLineDash([]);
         pdf.setDrawColor(0);
 
-        yOffset = cardTop + cardHeight + 10;
+        attendeeIndexOnPage += 1;
       });
 
       pdf.save(`ticket-${registration.orderCode}.pdf`);
@@ -463,7 +499,7 @@ export default function Ticket() {
 
   const eventDateLabel = formatEventDateLabel(registration.event);
   const eventThumbnailSrc = eventImageDataUrl || registration.event.imageUrl;
-  const eventInitial = (registration.event.name?.charAt(0) || '?').toUpperCase();
+  const eventInitial = (registration.event.title?.charAt(0) || '?').toUpperCase();
 
   const normalizedPaymentStatus = normalizeStatus(registration.paymentStatus);
   const isCancelled = isCancelledStatus(registration.paymentStatus);
@@ -518,7 +554,7 @@ export default function Ticket() {
                   {eventThumbnailSrc ? (
                     <img
                       src={eventThumbnailSrc}
-                      alt={registration.event.name}
+                      alt={registration.event.title}
                       className="w-full h-full object-cover"
                     />
                   ) : (
@@ -529,7 +565,7 @@ export default function Ticket() {
                 </div>
                 <div className="space-y-1 text-white">
                   <h2 className="text-2xl font-bold leading-tight">
-                    {registration.event.name}
+                    {registration.event.title}
                   </h2>
                   <div className="flex items-center gap-2 text-sm text-white/90">
                     <Calendar className="w-4 h-4" />
@@ -558,10 +594,11 @@ export default function Ticket() {
             {!isCancelled && (
               <>
                 {/* QR Code por inscrito */}
-                <div className="space-y-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {registration.attendees.map((attendee, index) => {
                       const nome =
+                        attendee.attendeeData.nome_completo ||
                         attendee.attendeeData.nome_do_inscrito ||
                         attendee.attendeeData.nome ||
                         `Inscrito ${index + 1}`;
@@ -570,28 +607,28 @@ export default function Ticket() {
                       return (
                         <div
                           key={attendee.id}
-                          className="bg-white p-4 rounded-lg border-2 border-dashed flex flex-col items-center"
+                          className="bg-white p-3 rounded-lg border border-dashed flex flex-col items-center"
                         >
                           {attendeeQr ? (
                             <img
                               src={attendeeQr}
                               alt={`QR Code de ${nome}`}
-                              className="w-48 h-48 object-contain"
+                              className="w-32 h-32 object-contain"
                             />
                           ) : (
-                            <div className="w-48 h-48 flex items-center justify-center text-xs text-muted-foreground">
+                            <div className="w-32 h-32 flex items-center justify-center text-[10px] text-muted-foreground">
                               QR Code sendo gerado...
                             </div>
                           )}
-                          <p className="mt-2 font-semibold text-center">{nome}</p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="mt-2 text-sm font-semibold text-center">{nome}</p>
+                          <p className="text-[11px] text-muted-foreground">
                             Lote: {attendee.batch.name}
                           </p>
                         </div>
                       );
                     })}
                   </div>
-                  <p className="text-sm text-muted-foreground text-center">
+                  <p className="text-xs text-muted-foreground text-center">
                     Apresente o QR Code correspondente ao seu nome na entrada do evento
                   </p>
                 </div>
@@ -611,7 +648,8 @@ export default function Ticket() {
                     <div className="flex justify-between items-start">
                       <div>
                         <p className="font-medium">
-                          {attendee.attendeeData.nome_do_inscrito ||
+                          {attendee.attendeeData.nome_completo ||
+                            attendee.attendeeData.nome_do_inscrito ||
                             attendee.attendeeData.nome ||
                             `Inscrito ${index + 1}`}
                         </p>
@@ -697,3 +735,4 @@ export default function Ticket() {
     </div>
   );
 }
+

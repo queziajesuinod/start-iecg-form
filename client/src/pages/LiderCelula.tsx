@@ -613,6 +613,7 @@ export default function LiderCelula() {
           setPhotoDataUrl(finalPhotoDataUrl);
         }
       }
+      const imageDataUrl = finalPhotoDataUrl ?? getCurrentLeaderPhotoDataUrl();
       const payload = {
         celulaId: leaderForm.celulaId || undefined,
         lider: leaderForm.name || undefined,
@@ -631,9 +632,7 @@ export default function LiderCelula() {
         cep: leaderForm.cep || undefined,
         escolaridade: leaderForm.escolaridade || undefined,
         nome_esposo: leaderForm.nomeEsposo || undefined,
-        image:
-          finalPhotoDataUrl?.replace(/^data:image\/[^;]+;base64,/, '') ??
-          (photoDataUrl ? photoDataUrl.replace(/^data:image\/[^;]+;base64,/, '') : undefined),
+        image: imageDataUrl || undefined,
       };
       const response = await upsertLeaderForCelula(payload);
       setLeaderResult(response.leader);
