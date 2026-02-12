@@ -104,6 +104,7 @@ export const appRouter = router({
           observacao: z.string().optional(),
           campus_iecg: z.string(),
           status: z.string(),
+          dias_semana: z.array(z.string()),
         })
       )
       .mutation(async ({ input }) => {
