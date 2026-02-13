@@ -769,11 +769,11 @@ export default function EventDetails() {
           {/* Informações do Evento */}
           <Card className="overflow-hidden pt-0">
             {evento.imageUrl && (
-              <div className="flex justify-center pt-6">
+              <div className="w-full aspect-video overflow-hidden">
                 <img
                   src={evento.imageUrl}
                   alt={evento.title}
-                  className="h-40 w-40 rounded-full object-cover border-4 border-white shadow-md"
+                  className="h-full w-full object-cover"
                 />
               </div>
             )}
