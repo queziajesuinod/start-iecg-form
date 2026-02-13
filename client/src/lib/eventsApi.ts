@@ -7,6 +7,40 @@ const api = axios.create({
   baseURL: API_URL,
 });
 
+// ============= SISTEMA DE CACHE =============
+
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+const cache = new Map<string, CacheEntry<any>>();
+
+function getCached<T>(key: string): T | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  
+  const now = Date.now();
+  if (now - entry.timestamp > CACHE_TTL) {
+    cache.delete(key);
+    return null;
+  }
+  
+  console.log('[CACHE HIT]', key);
+  return entry.data as T;
+}
+
+function setCache<T>(key: string, data: T): void {
+  cache.set(key, { data, timestamp: Date.now() });
+}
+
+// Função para limpar cache manualmente (útil para testes)
+export function clearCache(): void {
+  cache.clear();
+  console.log('[CACHE] Cache limpo');
+}
+
 // ============= EVENTOS PÚBLICOS =============
 
 export interface Event {
@@ -177,19 +211,52 @@ export const listarEventosPublicos = async (): Promise<Event[]> => {
 
 // Buscar detalhes de um evento
 export const buscarEventoPublico = async (id: string): Promise<Event> => {
+  const cacheKey = `event-${id}`;
+  
+  // Tentar cache primeiro
+  const cached = getCached<Event>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+  
+  // Se não tem cache, buscar da API
   const response = await api.get(`/api/public/events/${id}`);
+  setCache(cacheKey, response.data);
+  
   return response.data;
 };
 
 // Listar lotes de um evento
 export const listarLotesPublicos = async (eventId: string): Promise<EventBatch[]> => {
+  const cacheKey = `batches-${eventId}`;
+  
+  // Tentar cache primeiro
+  const cached = getCached<EventBatch[]>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+  
+  // Se não tem cache, buscar da API
   const response = await api.get(`/api/public/events/${eventId}/batches`);
+  setCache(cacheKey, response.data);
+  
   return response.data;
 };
 
 // Listar campos do formulário
 export const listarCamposFormulario = async (eventId: string): Promise<FormField[]> => {
+  const cacheKey = `fields-${eventId}`;
+  
+  // Tentar cache primeiro
+  const cached = getCached<FormField[]>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+  
+  // Se não tem cache, buscar da API
   const response = await api.get(`/api/public/events/${eventId}/form-fields`);
+  setCache(cacheKey, response.data);
+  
   return response.data;
 };
 
@@ -241,7 +308,18 @@ export const criarPagamentoInscricao = async (
 
 // Buscar formas de pagamento do evento
 export const buscarFormasPagamento = async (eventId: string): Promise<PaymentOption[]> => {
+  const cacheKey = `payment-options-${eventId}`;
+  
+  // Tentar cache primeiro
+  const cached = getCached<PaymentOption[]>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+  
+  // Se não tem cache, buscar da API
   const response = await api.get(`/api/public/events/${eventId}/payment-options`);
+  setCache(cacheKey, response.data);
+  
   return response.data;
 };
 
