@@ -369,16 +369,14 @@ export default function EventDetails() {
 
     let total = subtotal - calcularDesconto(subtotal);
 
-    // Aplicar taxas se houver parcelas
+    // Aplicar taxa apenas uma vez quando houver parcelamento
     if (formaPagamento && installments > 1) {
     const pagamento = findPaymentOption(formaPagamento);
       if (pagamento && pagamento.interestRate > 0) {
         if (pagamento.interestType === 'percentage') {
-          // Taxas percentual por parcela
-          total += total * (Number(pagamento.interestRate) / 100) * (installments - 1);
+          total += total * (Number(pagamento.interestRate) / 100);
         } else {
-          // Taxas fixo por parcela
-          total += Number(pagamento.interestRate) * (installments - 1);
+          total += Number(pagamento.interestRate);
         }
       }
     }
@@ -1154,7 +1152,7 @@ export default function EventDetails() {
                           return (
                             <SelectItem key={p} value={p.toString()}>
                               {p}x de R$ {valorParcela.toFixed(2)}
-                              {semTaxas ? ' sem taxas' : ` (${pagamento.interestRate}% ${pagamento.interestType === 'percentage' ? 'a.m.' : 'fixo'})`}
+                              {semTaxas ? ' sem taxas' : ` (${pagamento.interestRate}% ${pagamento.interestType === 'percentage' ? 'taxa única' : 'fixo'})`}
                             </SelectItem>
                           );
                         })}
