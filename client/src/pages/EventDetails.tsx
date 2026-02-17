@@ -44,11 +44,20 @@ const getMessageFromPayload = (payload: unknown): string | undefined => {
   }
 
   if (isRecord(payload)) {
+    if ('Message' in payload && payload.Message) {
+      return getMessageFromPayload(payload.Message);
+    }
     if ('message' in payload && payload.message) {
       return getMessageFromPayload(payload.message);
     }
     if ('error' in payload && payload.error) {
       return getMessageFromPayload(payload.error);
+    }
+    if ('payload' in payload && payload.payload) {
+      return getMessageFromPayload(payload.payload);
+    }
+    if ('details' in payload && payload.details) {
+      return getMessageFromPayload(payload.details);
     }
     if ('errors' in payload && Array.isArray(payload.errors) && payload.errors.length > 0) {
       return getMessageFromPayload(payload.errors[0]);
@@ -548,9 +557,17 @@ export default function EventDetails() {
         await verificarPagamentoCartao(resultado.orderCode, resultado);
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
       console.error('Erro ao processar inscrição:', error);
-      toast.error(error.response?.data?.message || 'Erro ao processar inscrição');
+      const axiosLikeError = error as {
+        response?: { data?: unknown };
+        message?: unknown;
+      };
+      const errorMessage =
+        getMessageFromPayload(axiosLikeError.response?.data) ||
+        getMessageFromPayload(axiosLikeError.message) ||
+        'Erro ao processar inscrição';
+      toast.error(errorMessage);
     } finally {
       setSubmitting(false);
     }
@@ -1311,3 +1328,4 @@ export default function EventDetails() {
     </div>
   );
 }
+
