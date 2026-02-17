@@ -28,14 +28,14 @@ export default function RegistrationConfirmation() {
       setLoading(true);
       const data = await consultarInscricao(orderCode!);
       setRegistration(data);
-      
+
       // Se for PIX e estiver pendente, iniciar polling
       if (data.paymentMethod === 'pix' && data.paymentStatus === 'pending') {
         iniciarPolling();
       }
     } catch (error) {
-      console.error('Erro ao carregar inscrição:', error);
-      toast.error('Erro ao carregar dados da inscrição');
+      console.error('Erro ao carregar inscricao:', error);
+      toast.error('Erro ao carregar dados da inscricao');
     } finally {
       setLoading(false);
     }
@@ -47,7 +47,7 @@ export default function RegistrationConfirmation() {
       try {
         const data = await consultarInscricao(orderCode!);
         setRegistration(data);
-        
+
         if (data.paymentStatus !== 'pending') {
           clearInterval(interval);
           setPolling(false);
@@ -58,9 +58,9 @@ export default function RegistrationConfirmation() {
       } catch (error) {
         console.error('Erro no polling:', error);
       }
-    }, 5000); // Verificar a cada 5 segundos
+    }, 5000);
 
-    // Parar após 10 minutos
+    // Parar apos 10 minutos
     setTimeout(() => {
       clearInterval(interval);
       setPolling(false);
@@ -70,7 +70,7 @@ export default function RegistrationConfirmation() {
   const copiarPixCode = () => {
     if (registration?.pixQrCode) {
       navigator.clipboard.writeText(registration.pixQrCode);
-      toast.success('Código PIX copiado!');
+      toast.success('Codigo PIX copiado!');
     }
   };
 
@@ -87,7 +87,7 @@ export default function RegistrationConfirmation() {
       <div className="container mx-auto p-6">
         <Card>
           <CardHeader>
-            <CardTitle>Inscrição não encontrada</CardTitle>
+            <CardTitle>Inscricao nao encontrada</CardTitle>
           </CardHeader>
           <CardContent>
             <Button onClick={() => setLocation('/eventos')}>Voltar para Eventos</Button>
@@ -98,8 +98,10 @@ export default function RegistrationConfirmation() {
   }
 
   const isPix = registration.paymentMethod === 'pix';
-  const isPending = registration.paymentStatus === 'pending';
-  const isConfirmed = registration.paymentStatus === 'confirmed';
+  const normalizedStatus = String(registration.paymentStatus || '').toLowerCase();
+  const isPending = ['pending', 'waiting', 'authorized', 'notfinished'].includes(normalizedStatus);
+  const isConfirmed = ['confirmed', 'paid', 'captured'].includes(normalizedStatus);
+  const isDenied = ['failed', 'denied', 'deniedbycielo', 'canceled', 'cancelled', 'aborted'].includes(normalizedStatus);
 
   return (
     <div className="container mx-auto p-6 max-w-2xl">
@@ -108,17 +110,22 @@ export default function RegistrationConfirmation() {
           <div className="flex items-center gap-2">
             {isConfirmed ? (
               <CheckCircle className="h-6 w-6 text-green-600" />
+            ) : isDenied ? (
+              <Clock className="h-6 w-6 text-red-600" />
             ) : (
               <Clock className="h-6 w-6 text-yellow-600" />
             )}
             <CardTitle>
-              {isConfirmed ? 'Inscrição Confirmada!' : 'Aguardando Pagamento'}
+              {isConfirmed
+                ? 'Inscricao Confirmada!'
+                : isDenied
+                  ? 'Pagamento nao autorizado'
+                  : 'Aguardando Pagamento'}
             </CardTitle>
           </div>
-          <CardDescription>Código do pedido: {registration.orderCode}</CardDescription>
+          <CardDescription>Codigo do pedido: {registration.orderCode}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Informações da inscrição */}
           <div className="space-y-2">
             <div className="flex justify-between">
               <span className="text-gray-600">Quantidade:</span>
@@ -130,13 +137,12 @@ export default function RegistrationConfirmation() {
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Status:</span>
-              <span className={`font-medium ${isConfirmed ? 'text-green-600' : 'text-yellow-600'}`}>
-                {isConfirmed ? 'Confirmado' : 'Pendente'}
+              <span className={`font-medium ${isConfirmed ? 'text-green-600' : isDenied ? 'text-red-600' : 'text-yellow-600'}`}>
+                {isConfirmed ? 'Confirmado' : isDenied ? 'Negado' : 'Pendente'}
               </span>
             </div>
           </div>
 
-          {/* PIX - QR Code e Código */}
           {isPix && isPending && (
             <>
               <div className="border-t pt-6">
@@ -144,7 +150,7 @@ export default function RegistrationConfirmation() {
                   <QrCode className="h-5 w-5" />
                   Pagar com PIX
                 </h3>
-                
+
                 {registration.pixQrCodeBase64 && (
                   <div className="flex justify-center mb-4">
                     <img
@@ -157,7 +163,7 @@ export default function RegistrationConfirmation() {
 
                 {registration.pixQrCode && (
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Ou copie o código PIX:</label>
+                    <label className="text-sm font-medium">Ou copie o codigo PIX:</label>
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -176,7 +182,7 @@ export default function RegistrationConfirmation() {
                   <div className="mt-4 p-4 bg-blue-50 rounded-lg flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     <span className="text-sm text-blue-900">
-                      Aguardando confirmação do pagamento...
+                      Aguardando confirmacao do pagamento...
                     </span>
                   </div>
                 )}
@@ -184,19 +190,28 @@ export default function RegistrationConfirmation() {
             </>
           )}
 
-          {/* Cartão de Crédito - Confirmação */}
           {!isPix && isConfirmed && (
             <div className="border-t pt-6">
               <div className="p-4 bg-green-50 rounded-lg">
                 <p className="text-green-900 font-medium">Pagamento aprovado!</p>
                 <p className="text-sm text-green-700 mt-1">
-                  Você receberá um e-mail com os detalhes da sua inscrição.
+                  Voce recebera um e-mail com os detalhes da sua inscricao.
                 </p>
               </div>
             </div>
           )}
 
-          {/* Botões */}
+          {isDenied && (
+            <div className="border-t pt-6">
+              <div className="p-4 bg-red-50 rounded-lg">
+                <p className="text-red-900 font-medium">Pagamento nao autorizado.</p>
+                <p className="text-sm text-red-700 mt-1">
+                  Revise os dados de pagamento e tente novamente.
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-2 pt-4">
             <Button onClick={() => setLocation('/eventos')} variant="outline" className="flex-1">
               Voltar para Eventos

@@ -67,6 +67,27 @@ const getMessageFromPayload = (payload: unknown): string | undefined => {
   return undefined;
 };
 
+const parseCardExpiry = (value: string) => {
+  const [monthRaw, yearRaw] = value.split('/');
+  const month = Number(monthRaw);
+  const year = Number(yearRaw);
+  return { month, year };
+};
+
+const isCardExpiryValid = (value: string): boolean => {
+  if (!/^\d{2}\/\d{4}$/.test(value)) return false;
+  const { month, year } = parseCardExpiry(value);
+  if (!month || month < 1 || month > 12 || !year || year < 2000) return false;
+
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+
+  if (year < currentYear) return false;
+  if (year === currentYear && month < currentMonth) return false;
+  return true;
+};
+
 export default function EventDetails() {
   const [, setLocation] = useLocation();
   
@@ -160,27 +181,33 @@ export default function EventDetails() {
   ) => {
     try {
       const registration = await consultarInscricao(orderCode);
-      const cardPayment = registration.payments?.find((payment) => payment.method === 'credit_card');
+      const cardPayment = registration.payments?.find((payment: any) => payment.method === 'credit_card');
       const status = cardPayment?.status || registration.paymentStatus;
-      if (status === 'confirmed' || status === 'paid') {
+      const normalizedStatus = String(status || '').toLowerCase();
+
+      if (['confirmed', 'paid', 'captured'].includes(normalizedStatus)) {
         showPaymentStatusToast(status, registration.message);
         setLocation(`/ticket/${orderCode}`);
         return;
       }
 
-      if (['failed', 'canceled', 'denied'].includes(status || '')) {
+      if (['failed', 'canceled', 'cancelled', 'denied', 'deniedbycielo', 'aborted'].includes(normalizedStatus)) {
         const backendMessage =
-          cardPayment?.notes || payload.message || 'Não autorizado a compra pelo cartão de crédito.';
+          cardPayment?.notes ||
+          getMessageFromPayload(registration) ||
+          payload.message ||
+          'Nao autorizado a compra pelo cartao de credito.';
         showPaymentStatusToast(status, backendMessage);
         setCardDeniedMessage(backendMessage);
         setCardDeniedModalOpen(true);
         return;
       }
 
-      showPaymentStatusToast(status, registration.message);
+      toast.info('Pagamento em analise. Acompanhe o status da inscricao.');
+      setLocation(`/inscricao/${orderCode}`);
     } catch (error) {
-      console.error('Erro ao verificar pagamento do cartão:', error);
-      toast.error('Não foi possível validar o status do pagamento.');
+      console.error('Erro ao verificar pagamento do cartao:', error);
+      toast.error('Nao foi possivel validar o status do pagamento.');
     }
   };
 
@@ -346,7 +373,6 @@ export default function EventDetails() {
         message?: unknown;
       };
       const errorMessage =
-        getMessageFromPayload(axiosLikeError.response?.data?.message) ||
         getMessageFromPayload(axiosLikeError.response?.data) ||
         getMessageFromPayload(axiosLikeError.message) ||
         'Erro ao validar cupom';
@@ -433,6 +459,23 @@ export default function EventDetails() {
         toast.error('Preencha todos os dados do cartao');
         return false;
       }
+
+      const cardDigits = removeNonDigits(dadosPagamento.cardNumber || '');
+      if (cardDigits.length < 13 || cardDigits.length > 19) {
+        toast.error('Numero do cartao invalido');
+        return false;
+      }
+
+      if (!isCardExpiryValid(dadosPagamento.expirationDate || '')) {
+        toast.error('Validade do cartao invalida. Use o formato MM/AAAA');
+        return false;
+      }
+
+      const cvvDigits = removeNonDigits(dadosPagamento.securityCode || '');
+      if (cvvDigits.length < 3 || cvvDigits.length > 4) {
+        toast.error('CVV invalido');
+        return false;
+      }
     }
 
     if (requiresPayment && evento?.registrationPaymentMode === 'BALANCE_DUE') {
@@ -512,7 +555,12 @@ export default function EventDetails() {
           : undefined,
       });
 
-    if (resultado.sucesso) {
+    const isSuccessful = Boolean(
+      (resultado as RegistrationResponse & { sucesso?: boolean }).success ||
+      (resultado as RegistrationResponse & { sucesso?: boolean }).sucesso
+    );
+
+    if (isSuccessful) {
       if (!requiresPayment) {
         setLocation(`/ticket/${resultado.orderCode}`);
         return;
@@ -556,6 +604,12 @@ export default function EventDetails() {
         console.log('ENTRANDO NO ELSE (CARTÃO)');
         await verificarPagamentoCartao(resultado.orderCode, resultado);
       }
+    } else {
+      const resultadoMessage =
+        getMessageFromPayload(resultado) ||
+        getMessageFromPayload((resultado as { message?: unknown }).message) ||
+        'Nao foi possivel concluir a inscricao.';
+      toast.error(resultadoMessage);
     }
   } catch (error: unknown) {
       console.error('Erro ao processar inscrição:', error);
@@ -1328,4 +1382,5 @@ export default function EventDetails() {
     </div>
   );
 }
+
 
