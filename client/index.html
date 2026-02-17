@@ -15,7 +15,8 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script type="module">
+    <!-- Analytics script disabled temporarily to prevent DOM manipulation errors -->
+    <!-- <script type="module">
       const analyticsEndpoint = import.meta.env.VITE_ANALYTICS_ENDPOINT;
       const analyticsWebsiteId = import.meta.env.VITE_ANALYTICS_WEBSITE_ID;
 
@@ -27,7 +28,7 @@
         script.dataset.websiteId = analyticsWebsiteId;
         document.body.appendChild(script);
       }
-    </script>
+    </script> -->
   </body>
 
 </html>

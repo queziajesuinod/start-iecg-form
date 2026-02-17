@@ -185,7 +185,7 @@ export default function EventDetails() {
       toast.error(`Máximo de ${limite} inscrição(ões) por comprador`);
       return;
     }
-    setInscritos([...inscritos, { dados: {}, salvo: false, id: Date.now().toString(), batchId: null }]);
+    setInscritos(prev => [...prev, { dados: {}, salvo: false, id: Date.now().toString(), batchId: null }]);
   };
 
   const removerInscrito = (id: string) => {
@@ -193,7 +193,8 @@ export default function EventDetails() {
       toast.error('É necessário pelo menos 1 inscrito');
       return;
     }
-    setInscritos(inscritos.filter((i) => i.id !== id));
+    // Usar funcional para garantir estado mais recente e evitar problemas de concorrência no DOM
+    setInscritos(prev => prev.filter((i) => i.id !== id));
   };
 
   const salvarInscrito = (id: string) => {
@@ -209,13 +210,13 @@ export default function EventDetails() {
     }
 
     // Marcar como salvo
-    setInscritos(inscritos.map((i) => (i.id === id ? { ...i, salvo: true } : i)));
+    setInscritos(prev => prev.map((i) => (i.id === id ? { ...i, salvo: true } : i)));
     toast.success('Inscrito salvo!');
   };
 
   const atualizarDadosInscrito = (id: string, campo: string, valor: any) => {
-    setInscritos(
-      inscritos.map((i) =>
+    setInscritos(prev =>
+      prev.map((i) =>
         i.id === id ? { ...i, dados: { ...i.dados, [campo]: valor }, salvo: false } : i
       )
     );
@@ -881,7 +882,7 @@ export default function EventDetails() {
                             <Select 
                               value={inscrito.batchId || ''} 
                               onValueChange={(v) => {
-                                setInscritos(inscritos.map((i) => 
+                                setInscritos(prev => prev.map((i) => 
                                   i.id === inscrito.id ? { ...i, batchId: v } : i
                                 ));
                               }}
