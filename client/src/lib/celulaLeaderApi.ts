@@ -67,6 +67,7 @@ export interface UpsertLeaderPayload {
   email_lider?: string;
   cel_lider?: string;
   perfilId?: string;
+  is_lider_celula?: boolean;
   data_nascimento?: string;
   cpf?: string;
   estado_civil?: string;

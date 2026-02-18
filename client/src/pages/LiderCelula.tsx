@@ -440,7 +440,9 @@ export default function LiderCelula() {
             ? formatCPFInput(value)
             : prev.cpf
           : field === 'escolas'
-          ? (value as string[])
+          ? Array.isArray(value)
+            ? value
+            : prev.escolas
           : value,
     }));
   };
@@ -705,7 +707,7 @@ export default function LiderCelula() {
       await unlinkLeaderSpouse(leaderResult.id);
       setSpouseInfo(null);
       setLeaderResult((prev) =>
-        prev ? { ...prev, spouse: null, conjuge: null, partner: null } : prev
+        prev ? { ...prev, spouse: undefined, conjuge: undefined, partner: undefined } : prev
       );
       setLeaderForm((prev) => ({ ...prev, nomeEsposo: '' }));
       toast.success('Cônjuge desvinculado com sucesso.');

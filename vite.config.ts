@@ -3,14 +3,18 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vite";
+import { defineConfig, type PluginOption } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
   const isDevelopment = mode === "development";
-  const plugins = [react(), tailwindcss()];
+  const reactPlugin = react();
+  const plugins: PluginOption[] = [
+    ...(Array.isArray(reactPlugin) ? reactPlugin : [reactPlugin]),
+    tailwindcss(),
+  ];
 
   if (isDevelopment) {
     plugins.push(jsxLocPlugin(), vitePluginManusRuntime());

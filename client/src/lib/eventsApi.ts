@@ -125,8 +125,8 @@ export interface RegistrationData {
     data: Record<string, any>;
   }>;
   couponCode?: string;
-  paymentOptionId: string;
-  paymentData: {
+  paymentOptionId?: string;
+  paymentData?: {
     cardNumber?: string;
     cardHolder?: string;
     expirationDate?: string;
@@ -146,6 +146,10 @@ export interface RegistrationResponse {
     paymentStatus: string;
   };
   message: string;
+  pagamento?: {
+    qrCodeString?: string;
+    qrCodeBase64?: string;
+  };
 }
 
 export interface RegistrationPayment {
@@ -173,6 +177,11 @@ export interface RegistrationDetails {
   event: {
     id?: string;
     title: string;
+    name?: string;
+    location?: string;
+    imageUrl?: string;
+    startDate?: string | null;
+    eventDate?: string | null;
     registrationPaymentMode: 'SINGLE' | 'BALANCE_DUE';
     minDepositAmount?: string;
     maxPaymentCount?: number;
@@ -192,6 +201,7 @@ export interface RegistrationDetails {
       price: string;
     } | null;
   }>;
+  pixQrCode?: string | null;
   pixQrCodeBase64?: string | null;
   checkinQrCode?: string | null;
 }

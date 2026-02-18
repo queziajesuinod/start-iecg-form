@@ -12,7 +12,9 @@ interface Registration {
   orderCode: string;
   event: {
     id: string;
-    name: string;
+    name?: string;
+    title: string;
+    imageUrl?: string;
     eventDate?: string | null;
     startDate?: string | null;
     location: string;
@@ -31,6 +33,7 @@ interface Registration {
   }>;
   finalPrice: number;
   paymentStatus: string;
+  remaining?: number;
 }
 
 const EVENT_DATE_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
@@ -200,7 +203,7 @@ export default function Ticket() {
         throw new Error('Inscrição não encontrada');
       }
 
-      const data = await response.json();
+      const data: Registration = await response.json();
       setRegistration(data);
 
       const cancelled = isCancelledStatus(data.paymentStatus);
@@ -212,7 +215,7 @@ export default function Ticket() {
 
       const eventId = data.event?.id ?? '';
       const qrEntries = await Promise.all(
-        data.attendees.map(async (attendee) => {
+        data.attendees.map(async (attendee: Registration['attendees'][number]) => {
           try {
             const payload = JSON.stringify({
               orderCode: data.orderCode,
@@ -348,14 +351,14 @@ export default function Ticket() {
         pdf.setFont('helvetica', 'bold');
         pdf.setFontSize(16);
         const textStartY = margin + 16;
-        headerNameLines.forEach((line, index) => {
+        headerNameLines.forEach((line: string, index: number) => {
           pdf.text(line, headerTextX, textStartY + index * 7);
         });
 
         pdf.setFont('helvetica', 'normal');
         pdf.setFontSize(10);
         const detailStartY = textStartY + headerNameLines.length * 7 + 5;
-        headerDetailLines.forEach((line, index) => {
+        headerDetailLines.forEach((line: string, index: number) => {
           pdf.text(line, headerTextX, detailStartY + index * 5.5);
         });
 
@@ -376,7 +379,7 @@ export default function Ticket() {
         pdf.setFont('helvetica', 'bold');
         pdf.setFontSize(14);
         const titleLines = pdf.splitTextToSize(safeText(registration.event.title), miniWidth);
-        titleLines.forEach((line, index) => {
+        titleLines.forEach((line: string, index: number) => {
           pdf.text(line, margin, margin + 10 + index * 6);
         });
 
@@ -384,7 +387,7 @@ export default function Ticket() {
         pdf.setFontSize(10);
         const detailLines = pdf.splitTextToSize(headerDetailText, miniWidth);
         const detailStartY = margin + 10 + titleLines.length * 6 + 5;
-        detailLines.forEach((line, index) => {
+        detailLines.forEach((line: string, index: number) => {
           pdf.text(line, margin, detailStartY + index * 5);
         });
 
@@ -463,10 +466,10 @@ export default function Ticket() {
           align: 'center',
         });
 
-        pdf.setLineDash([3, 1]);
+        (pdf as any).setLineDash([3, 1]);
         pdf.setDrawColor(200);
         pdf.line(margin, cardTop + cardHeight, pageWidth - margin, cardTop + cardHeight);
-        pdf.setLineDash([]);
+        (pdf as any).setLineDash([]);
         pdf.setDrawColor(0);
 
         attendeeIndexOnPage += 1;
@@ -507,7 +510,7 @@ export default function Ticket() {
     !isCancelled &&
     (normalizedPaymentStatus === 'confirmed' ||
       normalizedPaymentStatus === 'paid' ||
-      registration.remaining <= 0);
+      (registration.remaining ?? 0) <= 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-50 to-white py-12 px-4">

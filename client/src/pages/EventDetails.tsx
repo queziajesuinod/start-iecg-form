@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -87,6 +87,126 @@ const isCardExpiryValid = (value: string): boolean => {
   if (year === currentYear && month < currentMonth) return false;
   return true;
 };
+
+type DebouncedInputProps = Omit<React.ComponentProps<typeof Input>, 'value' | 'onChange'> & {
+  value?: string;
+  onValueChange: (value: string) => void;
+  debounceMs?: number;
+  transform?: (value: string) => string;
+};
+
+function DebouncedInput({
+  value = '',
+  onValueChange,
+  debounceMs = 250,
+  transform,
+  onBlur,
+  ...props
+}: DebouncedInputProps) {
+  const [localValue, setLocalValue] = useState(value);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  const scheduleChange = (nextValue: string) => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      onValueChange(nextValue);
+      timeoutRef.current = null;
+    }, debounceMs);
+  };
+
+  const flushChange = (nextValue: string) => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    onValueChange(nextValue);
+  };
+
+  return (
+    <Input
+      {...props}
+      value={localValue}
+      onChange={(e) => {
+        const nextValue = transform ? transform(e.target.value) : e.target.value;
+        setLocalValue(nextValue);
+        scheduleChange(nextValue);
+      }}
+      onBlur={(e) => {
+        flushChange(localValue);
+        onBlur?.(e);
+      }}
+    />
+  );
+}
+
+type DebouncedTextareaProps = Omit<React.ComponentProps<typeof Textarea>, 'value' | 'onChange'> & {
+  value?: string;
+  onValueChange: (value: string) => void;
+  debounceMs?: number;
+};
+
+function DebouncedTextarea({
+  value = '',
+  onValueChange,
+  debounceMs = 250,
+  onBlur,
+  ...props
+}: DebouncedTextareaProps) {
+  const [localValue, setLocalValue] = useState(value);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  const scheduleChange = (nextValue: string) => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      onValueChange(nextValue);
+      timeoutRef.current = null;
+    }, debounceMs);
+  };
+
+  const flushChange = (nextValue: string) => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    onValueChange(nextValue);
+  };
+
+  return (
+    <Textarea
+      {...props}
+      value={localValue}
+      onChange={(e) => {
+        const nextValue = e.target.value;
+        setLocalValue(nextValue);
+        scheduleChange(nextValue);
+      }}
+      onBlur={(e) => {
+        flushChange(localValue);
+        onBlur?.(e);
+      }}
+    />
+  );
+}
 
 export default function EventDetails() {
   const [, setLocation] = useLocation();
@@ -627,24 +747,54 @@ export default function EventDetails() {
     }
   };
 
-  const renderCampo = (campo: FormField, valor: any, onChange: (value: any) => void) => {
+  const isCpfField = (campo: FormField) =>
+    campo.fieldType === 'cpf' || campo.fieldName.toLowerCase().includes('cpf');
+  const isWhatsAppField = (campo: FormField) => {
+    const fieldName = campo.fieldName.toLowerCase();
+    const label = (campo.label || '').toLowerCase();
+    return (
+      campo.fieldType === 'phone' ||
+      fieldName.includes('whatsapp') ||
+      fieldName.includes('telefone') ||
+      label.includes('whatsapp')
+    );
+  };
+  const renderCampo = (
+    campo: FormField,
+    valor: any,
+    onChange: (value: any) => void,
+    inputId?: string
+  ) => {
     const commonProps = {
-      id: campo.fieldName,
+      id: inputId || campo.fieldName,
       placeholder: campo.placeholder,
       required: campo.isRequired,
     };
 
     switch (campo.fieldType) {
       case 'text':
-        return <Input {...commonProps} type="text" value={valor || ''} onChange={(e) => onChange(e.target.value)} />;
+        return (
+          <DebouncedInput
+            {...commonProps}
+            type="text"
+            value={valor || ''}
+            onValueChange={onChange}
+            transform={(nextValue) => {
+              if (isCpfField(campo)) return maskCPForCNPJ(nextValue);
+              if (isWhatsAppField(campo)) return maskPhone(nextValue);
+              return nextValue;
+            }}
+            maxLength={isCpfField(campo) ? 18 : isWhatsAppField(campo) ? 15 : undefined}
+          />
+        );
       
       case 'email':
         return (
-          <Input 
+          <DebouncedInput 
             {...commonProps} 
             type="email" 
             value={valor || ''} 
-            onChange={(e) => onChange(e.target.value)}
+            onValueChange={onChange}
             onBlur={(e) => {
               if (e.target.value && !validateEmail(e.target.value)) {
                 toast.error('Email inválido');
@@ -655,28 +805,24 @@ export default function EventDetails() {
       
       case 'phone':
         return (
-          <Input 
+          <DebouncedInput 
             {...commonProps} 
             type="tel" 
             value={valor || ''} 
-            onChange={(e) => {
-              const masked = maskPhone(e.target.value);
-              onChange(masked);
-            }}
+            onValueChange={onChange}
+            transform={maskPhone}
             maxLength={15}
           />
         );
       
       case 'cpf':
         return (
-          <Input 
+          <DebouncedInput 
             {...commonProps} 
             type="text" 
             value={valor || ''} 
-            onChange={(e) => {
-              const masked = maskCPForCNPJ(e.target.value);
-              onChange(masked);
-            }}
+            onValueChange={onChange}
+            transform={maskCPForCNPJ}
             onBlur={(e) => {
               const digits = removeNonDigits(e.target.value);
               if (digits && !validateCPForCNPJ(e.target.value)) {
@@ -695,7 +841,7 @@ export default function EventDetails() {
         return <Input {...commonProps} type="date" value={valor || ''} onChange={(e) => onChange(e.target.value)} />;
       
       case 'textarea':
-        return <Textarea {...commonProps} value={valor || ''} onChange={(e) => onChange(e.target.value)} />;
+        return <DebouncedTextarea {...commonProps} value={valor || ''} onValueChange={onChange} />;
       
       case 'select':
         return (
@@ -876,18 +1022,23 @@ export default function EventDetails() {
               <CardHeader>
                 <CardTitle>Dados do Comprador</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {camposComprador.map((campo) => (
-                  <div key={campo.id} className="space-y-2">
-                    <Label htmlFor={campo.fieldName}>
-                      {campo.label}
-                      {campo.isRequired && <span className="text-red-500 ml-1">*</span>}
-                    </Label>
-                    {renderCampo(campo, dadosComprador[campo.fieldName], (value) =>
-                      setDadosComprador({ ...dadosComprador, [campo.fieldName]: value })
-                    )}
-                  </div>
-                ))}
+              <CardContent>
+                <div className="[&>label]:mb-2 [&>label]:block [&>*:not(label)]:mb-4 [&>*:not(label):last-child]:mb-0">
+                  {camposComprador.map((campo) => (
+                    <Fragment key={campo.id}>
+                      <Label htmlFor={campo.fieldName}>
+                        {campo.label}
+                        {campo.isRequired && <span className="text-red-500 ml-1">*</span>}
+                      </Label>
+                      {renderCampo(
+                        campo,
+                        dadosComprador[campo.fieldName],
+                        (value) => setDadosComprador((prev) => ({ ...prev, [campo.fieldName]: value })),
+                        campo.fieldName
+                      )}
+                    </Fragment>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           )}
@@ -964,7 +1115,7 @@ export default function EventDetails() {
                               </SelectTrigger>
                               <SelectContent>
                                 {lotesAtivosNoRange.map((lote) => {
-                                  const esgotado = lote.vagasDisponiveis !== null && lote.vagasDisponiveis <= 0;
+                                  const esgotado = lote.vagasDisponiveis != null && lote.vagasDisponiveis <= 0;
                                   return (
                                     <SelectItem 
                                       key={lote.id} 
@@ -984,19 +1135,22 @@ export default function EventDetails() {
                             )}
                           </div>
                           
-                          {camposInscrito.map((campo) => (
-                            <div key={campo.id} className="space-y-2">
-                              <Label htmlFor={`${campo.fieldName}-${inscrito.id}`}>
-                                {campo.label}
-                                {campo.isRequired && <span className="text-red-500 ml-1">*</span>}
-                              </Label>
-                              {renderCampo(
-                                campo,
-                                inscrito.dados[campo.fieldName],
-                                (value) => atualizarDadosInscrito(inscrito.id, campo.fieldName, value)
-                              )}
-                            </div>
-                          ))}
+                          <div className="[&>label]:mb-2 [&>label]:block [&>*:not(label)]:mb-4 [&>*:not(label):last-child]:mb-0">
+                            {camposInscrito.map((campo) => (
+                              <Fragment key={campo.id}>
+                                <Label htmlFor={`${campo.fieldName}-${inscrito.id}`}>
+                                  {campo.label}
+                                  {campo.isRequired && <span className="text-red-500 ml-1">*</span>}
+                                </Label>
+                                {renderCampo(
+                                  campo,
+                                  inscrito.dados[campo.fieldName],
+                                  (value) => atualizarDadosInscrito(inscrito.id, campo.fieldName, value),
+                                  `${campo.fieldName}-${inscrito.id}`
+                                )}
+                              </Fragment>
+                            ))}
+                          </div>
                           <div className="flex gap-2 pt-4">
                             <Button
                               type="button"
@@ -1382,5 +1536,3 @@ export default function EventDetails() {
     </div>
   );
 }
-
-

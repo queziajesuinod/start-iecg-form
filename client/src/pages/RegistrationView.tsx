@@ -610,12 +610,11 @@ export default function RegistrationView() {
                     <div className="space-y-1">
                       <Label htmlFor="payment-option">Opção ativa</Label>
                       <Select
-                        id="payment-option"
                         value={selectedPaymentOptionId}
                         onValueChange={(value) => setSelectedPaymentOptionId(value)}
                         disabled={loadingPaymentOptions || !optionsForMethod.length}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger id="payment-option">
                           <SelectValue
                             placeholder={
                               loadingPaymentOptions
