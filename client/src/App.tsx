@@ -1,38 +1,50 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/NotFound";
-import AtualizarCelula from "@/pages/AtualizarCelula";
-import LiderCelula from "@/pages/LiderCelula";
-import Links from "@/pages/Links";
+import { lazy, Suspense } from "react";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import StartForm from "./pages/StartForm";
-import EventList from "./pages/EventList";
-import EventDetails from "./pages/EventDetails";
-import RegistrationConfirmation from "./pages/RegistrationConfirmation";
-import RegistrationView from "./pages/RegistrationView";
-import PixConfirmation from "./pages/PixConfirmation";
-import Ticket from "./pages/Ticket";
+
+const StartForm = lazy(() => import("./pages/StartForm"));
+const EventList = lazy(() => import("./pages/EventList"));
+const EventDetails = lazy(() => import("./pages/EventDetails"));
+const RegistrationConfirmation = lazy(() => import("./pages/RegistrationConfirmation"));
+const RegistrationView = lazy(() => import("./pages/RegistrationView"));
+const PixConfirmation = lazy(() => import("./pages/PixConfirmation"));
+const Ticket = lazy(() => import("./pages/Ticket"));
+const AtualizarCelula = lazy(() => import("./pages/AtualizarCelula"));
+const LiderCelula = lazy(() => import("./pages/LiderCelula"));
+const Links = lazy(() => import("./pages/Links"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+
+function RouterFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="h-10 w-10 rounded-full border-4 border-primary/30 border-t-primary animate-spin" />
+    </div>
+  );
+}
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
   return (
-    <Switch>
-      <Route path={"/"} component={StartForm} />
-      <Route path={"/eventos"} component={EventList} />
-      <Route path={"/eventos/:id"} component={EventDetails} />
-      <Route path={"/inscricao/:orderCode"} component={RegistrationConfirmation} />
-      <Route path={"/inscricao/:orderCode/visualizacao"} component={RegistrationView} />
-      <Route path={"/pix-confirmacao"} component={PixConfirmation} />
-      <Route path={"/ticket/:orderCode"} component={Ticket} />
-      <Route path={"/celulas/atualizar"} component={AtualizarCelula} />
-      <Route path={"/celulas/lider"} component={LiderCelula} />
-      <Route path={"/links"} component={Links} />
-      <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={<RouterFallback />}>
+      <Switch>
+        <Route path={"/"} component={StartForm} />
+        <Route path={"/eventos"} component={EventList} />
+        <Route path={"/eventos/:id"} component={EventDetails} />
+        <Route path={"/inscricao/:orderCode"} component={RegistrationConfirmation} />
+        <Route path={"/inscricao/:orderCode/visualizacao"} component={RegistrationView} />
+        <Route path={"/pix-confirmacao"} component={PixConfirmation} />
+        <Route path={"/ticket/:orderCode"} component={Ticket} />
+        <Route path={"/celulas/atualizar"} component={AtualizarCelula} />
+        <Route path={"/celulas/lider"} component={LiderCelula} />
+        <Route path={"/links"} component={Links} />
+        <Route path={"/404"} component={NotFound} />
+        {/* Final fallback route */}
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 

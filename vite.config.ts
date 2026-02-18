@@ -6,12 +6,18 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
 
-
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime()];
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
-export default defineConfig({
-  plugins,
+export default defineConfig(({ mode }) => {
+  const isDevelopment = mode === "development";
+  const plugins = [react(), tailwindcss()];
+
+  if (isDevelopment) {
+    plugins.push(jsxLocPlugin(), vitePluginManusRuntime());
+  }
+
+  return {
+    plugins,
   resolve: {
     alias: {
       "@": path.resolve(projectRoot, "client", "src"),
@@ -42,4 +48,5 @@ export default defineConfig({
       deny: ["**/.*"],
     },
   },
+  };
 });

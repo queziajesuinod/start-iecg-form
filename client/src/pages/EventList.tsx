@@ -21,7 +21,30 @@ export default function EventList() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    carregarEventos();
+    let mounted = true;
+
+    const carregar = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await listarEventosPublicos();
+        if (!mounted) return;
+        setEventos(data);
+        setLoading(false);
+        void verificarDisponibilidadeLotes(data);
+      } catch (err) {
+        if (!mounted) return;
+        console.error('Erro ao carregar eventos:', err);
+        setError('Erro ao carregar eventos. Tente novamente mais tarde.');
+        setLoading(false);
+      }
+    };
+
+    void carregar();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const carregarEventos = async () => {
@@ -30,7 +53,8 @@ export default function EventList() {
       setError(null);
       const data = await listarEventosPublicos();
       setEventos(data);
-      await verificarDisponibilidadeLotes(data);
+      setLoading(false);
+      void verificarDisponibilidadeLotes(data);
     } catch (err) {
       console.error('Erro ao carregar eventos:', err);
       setError('Erro ao carregar eventos. Tente novamente mais tarde.');
@@ -164,6 +188,8 @@ export default function EventList() {
                       <img
                         src={evento.imageUrl}
                         alt={evento.title}
+                        loading="lazy"
+                        decoding="async"
                         className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
                       />
                     </AspectRatio>
