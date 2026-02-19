@@ -30,6 +30,7 @@ import {
 } from '@/lib/eventsApi';
 import { maskCPForCNPJ, maskPhone, validateCPForCNPJ, validateEmail, removeNonDigits, maskCreditCard, maskCardExpiry, maskCVV } from '@/lib/masks';
 import { isBatchActiveNow } from '@/lib/eventUtils';
+import { applyInstallmentInterest, formatInstallmentInterest, getInstallmentInterestRule } from '@/lib/installmentInterest';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -532,22 +533,17 @@ export default function EventDetails() {
   };
 
   const calcularValorTotal = (installments = parcelas) => {
-    // Somar preço de cada inscrito baseado no seu lote específico
+    // Somar preco de cada inscrito baseado no seu lote especifico
     const subtotal = calcularSubtotal();
     if (subtotal === 0) return 0;
 
-    let total = subtotal - calcularDesconto(subtotal);
+    const totalSemTaxas = subtotal - calcularDesconto(subtotal);
+    let total = totalSemTaxas;
 
-    // Aplicar taxa apenas uma vez quando houver parcelamento
+    // Aplicar juros conforme a regra da parcela selecionada.
     if (formaPagamento && installments > 1) {
-    const pagamento = findPaymentOption(formaPagamento);
-      if (pagamento && pagamento.interestRate > 0) {
-        if (pagamento.interestType === 'percentage') {
-          total += total * (Number(pagamento.interestRate) / 100);
-        } else {
-          total += Number(pagamento.interestRate);
-        }
-      }
+      const pagamento = findPaymentOption(formaPagamento);
+      total = applyInstallmentInterest(totalSemTaxas, pagamento, installments);
     }
 
     return Math.max(0, total);
@@ -946,6 +942,25 @@ export default function EventDetails() {
   const cardExpDisplay = dadosPagamento.expirationDate?.trim() || 'MM/AAAA';
   const cardCvvDisplay = dadosPagamento.securityCode?.trim() || '•••';
 
+
+  useEffect(() => {
+    if (!formaPagamento || selectedPaymentOption?.paymentType !== 'credit_card') {
+      if (parcelas !== 1) {
+        setParcelas(1);
+      }
+      return;
+    }
+
+    const limiteParcelas = Math.max(1, selectedPaymentOption.maxInstallments || 1);
+    if (parcelas > limiteParcelas) {
+      setParcelas(limiteParcelas);
+      return;
+    }
+
+    if (parcelas < 1) {
+      setParcelas(1);
+    }
+  }, [formaPagamento, selectedPaymentOption, parcelas]);
   useEffect(() => {
     if (evento?.registrationPaymentMode !== 'BALANCE_DUE') {
       if (valorPagamento !== '') {
@@ -1399,11 +1414,12 @@ export default function EventDetails() {
                           const pagamento = selectedPaymentOption;
                           const totalParcelado = calcularValorTotal(p);
                           const valorParcela = totalParcelado / p;
-                          const semTaxas = !pagamento || pagamento.interestRate === 0 || p === 1;
+                          const regraParcela = getInstallmentInterestRule(pagamento, p);
+                          const semTaxas = !pagamento || regraParcela.interestRate <= 0 || p === 1;
                           return (
                             <SelectItem key={p} value={p.toString()}>
                               {p}x de R$ {valorParcela.toFixed(2)}
-                              {semTaxas ? ' sem taxas' : ` (${pagamento.interestRate}% ${pagamento.interestType === 'percentage' ? 'taxa única' : 'fixo'})`}
+                              {semTaxas ? ' sem taxas' : ` (${formatInstallmentInterest(regraParcela)})`}
                             </SelectItem>
                           );
                         })}

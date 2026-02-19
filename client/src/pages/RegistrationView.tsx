@@ -19,6 +19,7 @@ import {
   type RegistrationPayment,
 } from '@/lib/eventsApi';
 import { maskCardExpiry, maskCreditCard, maskCVV, removeNonDigits } from '@/lib/masks';
+import { formatInstallmentInterest, getInstallmentInterestRule } from '@/lib/installmentInterest';
 
 const normalizeStatus = (status?: string | null) =>
   (status ?? '').trim().toLowerCase();
@@ -259,12 +260,8 @@ export default function RegistrationView() {
     method === 'credit_card' && selectedPaymentOption?.paymentType === 'credit_card';
   const maxInstallments = Math.max(1, selectedPaymentOption?.maxInstallments ?? 1);
   const installmentOptions = Array.from({ length: maxInstallments }, (_, index) => index + 1);
-  const interestDescription =
-    selectedPaymentOption && selectedPaymentOption.interestRate > 0
-      ? selectedPaymentOption.interestType === 'percentage'
-        ? `${selectedPaymentOption.interestRate}% ao mês`
-        : `R$ ${selectedPaymentOption.interestRate.toFixed(2)} fixo`
-      : 'Sem taxas';
+  const selectedInstallmentInterest = getInstallmentInterestRule(selectedPaymentOption, installments);
+  const interestDescription = formatInstallmentInterest(selectedInstallmentInterest);
 
   useEffect(() => {
     if (method === 'credit_card' && installments > maxInstallments) {
@@ -639,12 +636,15 @@ export default function RegistrationView() {
                         <SelectContent>
                           {optionsForMethod.map((option) => {
                             const methodLabel = option.paymentType === 'pix' ? 'PIX' : 'Cartão';
-                            const interestText =
-                              option.interestRate > 0
-                                ? option.interestType === 'percentage'
-                                  ? `${option.interestRate}% ao mês`
-                                  : `R$ ${option.interestRate.toFixed(2)} fixo`
-                                : 'Sem taxas';
+                            const hasInstallmentRates = Array.isArray(option.installmentInterestRates)
+                              ? option.installmentInterestRates.length > 0
+                              : Boolean(
+                                  option.installmentInterestRates &&
+                                    Object.keys(option.installmentInterestRates).length > 0
+                                );
+                            const interestText = hasInstallmentRates
+                              ? 'juros por parcela'
+                              : formatInstallmentInterest(getInstallmentInterestRule(option, 2));
                             return (
                               <SelectItem key={option.id} value={String(option.id)}>
                                 {methodLabel} — {interestText}
@@ -674,6 +674,9 @@ export default function RegistrationView() {
                         {installmentOptions.map((option) => (
                           <SelectItem key={option} value={option.toString()}>
                             {option}x
+                            {option > 1
+                              ? ` (${formatInstallmentInterest(getInstallmentInterestRule(selectedPaymentOption, option))})`
+                              : ' sem taxas'}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -685,7 +688,7 @@ export default function RegistrationView() {
                   <div className="flex items-center justify-between">
                     <h4 className="text-sm font-medium">Dados do Cartão</h4>
                     <span className="text-xs text-muted-foreground">
-                      {selectedPaymentOption.interestRate > 0 ? 'Pagamento com taxas' : 'Sem taxas'}
+                      {selectedInstallmentInterest.interestRate > 0 ? 'Pagamento com taxas' : 'Sem taxas'}
                     </span>
                   </div>
                   <div>

@@ -93,6 +93,13 @@ export interface PaymentOption {
   maxInstallments: number;
   interestRate: number;
   interestType: 'percentage' | 'fixed';
+  installmentInterestRates?:
+    | Record<string, number>
+    | Array<{
+        installments: number;
+        interestRate: number;
+        interestType?: 'percentage' | 'fixed';
+      }>;
   isActive: boolean;
 }
 
