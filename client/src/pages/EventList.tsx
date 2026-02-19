@@ -1,87 +1,41 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { AspectRatio } from '@radix-ui/react-aspect-ratio';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, MapPin, Users, Loader2 } from 'lucide-react';
+import { Calendar, MapPin } from 'lucide-react';
 import { listarEventosPublicos, listarLotesPublicos, type Event } from '@/lib/eventsApi';
 import { getActiveBatches, sumAvailableSeats } from '@/lib/eventUtils';
+
+type BatchAvailability = {
+  hasActiveBatch: boolean;
+  availableSeats: number | null;
+  activeBatchNames: string[];
+};
 
 export default function EventList() {
   const [, setLocation] = useLocation();
   const [eventos, setEventos] = useState<Event[]>([]);
-  type BatchAvailability = {
-    hasActiveBatch: boolean;
-    availableSeats: number | null;
-    activeBatchNames: string[];
-  };
   const [batchAvailability, setBatchAvailability] = useState<Record<string, BatchAvailability>>({});
   const [loadingBatchAvailability, setLoadingBatchAvailability] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
-
-    const carregar = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const data = await listarEventosPublicos();
-        if (!mounted) return;
-        setEventos(data);
-        setBatchAvailability({});
-        setLoadingBatchAvailability({});
-        setLoading(false);
-        void verificarDisponibilidadeLotes(data);
-      } catch (err) {
-        if (!mounted) return;
-        console.error('Erro ao carregar eventos:', err);
-        setError('Erro ao carregar eventos. Tente novamente mais tarde.');
-        setLoading(false);
-      }
-    };
-
-    void carregar();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const carregarEventos = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await listarEventosPublicos();
-      setEventos(data);
-      setBatchAvailability({});
-      setLoadingBatchAvailability({});
-      setLoading(false);
-      void verificarDisponibilidadeLotes(data);
-    } catch (err) {
-      console.error('Erro ao carregar eventos:', err);
-      setError('Erro ao carregar eventos. Tente novamente mais tarde.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const verificarDisponibilidadeLotes = async (eventos: Event[]) => {
-    if (!eventos.length) {
+  const verificarDisponibilidadeLotes = async (listaEventos: Event[]) => {
+    if (!listaEventos.length) {
       setBatchAvailability({});
       setLoadingBatchAvailability({});
       return;
     }
 
     setLoadingBatchAvailability(
-      Object.fromEntries(eventos.map((evento) => [evento.id, true]))
+      Object.fromEntries(listaEventos.map((evento) => [evento.id, true]))
     );
 
     const hoje = new Date();
     const availabilityEntries = await Promise.all(
-      eventos.map(async (evento) => {
+      listaEventos.map(async (evento) => {
         try {
           const lotes = await listarLotesPublicos(evento.id, { skipCache: true });
           const activeBatches = getActiveBatches(lotes, hoje);
@@ -111,10 +65,71 @@ export default function EventList() {
         activeBatchNames: entry.activeBatchNames,
       };
     });
+
     setBatchAvailability(availabilityByEvent);
     setLoadingBatchAvailability(
-      Object.fromEntries(eventos.map((evento) => [evento.id, false]))
+      Object.fromEntries(listaEventos.map((evento) => [evento.id, false]))
     );
+  };
+
+  const agendarVerificacaoLotes = (listaEventos: Event[]) => {
+    if (!listaEventos.length) {
+      setBatchAvailability({});
+      setLoadingBatchAvailability({});
+      return;
+    }
+
+    // Yield para permitir paint inicial antes da verificacao de disponibilidade.
+    setTimeout(() => {
+      void verificarDisponibilidadeLotes(listaEventos);
+    }, 0);
+  };
+
+  useEffect(() => {
+    let mounted = true;
+
+    const carregar = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await listarEventosPublicos();
+        if (!mounted) return;
+        setEventos(data);
+        setBatchAvailability({});
+        setLoadingBatchAvailability({});
+        setLoading(false);
+        agendarVerificacaoLotes(data);
+      } catch (err) {
+        if (!mounted) return;
+        console.error('Erro ao carregar eventos:', err);
+        setError('Erro ao carregar eventos. Tente novamente mais tarde.');
+        setLoading(false);
+      }
+    };
+
+    void carregar();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const carregarEventos = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await listarEventosPublicos();
+      setEventos(data);
+      setBatchAvailability({});
+      setLoadingBatchAvailability({});
+      setLoading(false);
+      agendarVerificacaoLotes(data);
+    } catch (err) {
+      console.error('Erro ao carregar eventos:', err);
+      setError('Erro ao carregar eventos. Tente novamente mais tarde.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const formatarData = (data: string) => {
@@ -130,55 +145,55 @@ export default function EventList() {
     return evento.maxRegistrations - evento.currentRegistrations;
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-lg text-gray-600">Carregando eventos...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <Card className="max-w-md">
-          <CardHeader>
-            <CardTitle className="text-red-600">Erro</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p>{error}</p>
-          </CardContent>
-          <CardFooter>
-            <Button onClick={carregarEventos} className="w-full">
-              Tentar Novamente
-            </Button>
-          </CardFooter>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
       <div className="container max-w-6xl mx-auto">
-        {/* Header */}
         <div className="text-center mb-12">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-            Eventos Disponíveis
+            Eventos Disponiveis
           </h1>
           <p className="text-lg text-gray-600">
-            Escolha um evento e faça sua inscrição
+            Escolha um evento e faca sua inscricao
           </p>
         </div>
 
-        {/* Lista de Eventos */}
-        {eventos.length === 0 ? (
+        {error ? (
+          <Card className="max-w-md mx-auto">
+            <CardHeader>
+              <CardTitle className="text-red-600">Erro</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p>{error}</p>
+            </CardContent>
+            <CardFooter>
+              <Button onClick={carregarEventos} className="w-full">
+                Tentar Novamente
+              </Button>
+            </CardFooter>
+          </Card>
+        ) : loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <Card key={`event-skeleton-${index}`} className="pt-0">
+                <div className="aspect-[16/9] w-full animate-pulse rounded-t-lg bg-slate-200" />
+                <CardHeader className="space-y-3">
+                  <div className="h-6 w-3/4 animate-pulse rounded bg-slate-200" />
+                  <div className="h-4 w-full animate-pulse rounded bg-slate-200" />
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="h-4 w-1/2 animate-pulse rounded bg-slate-200" />
+                  <div className="h-4 w-2/3 animate-pulse rounded bg-slate-200" />
+                </CardContent>
+                <CardFooter>
+                  <div className="h-9 w-full animate-pulse rounded bg-slate-200" />
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        ) : eventos.length === 0 ? (
           <Card className="max-w-md mx-auto">
             <CardContent className="pt-6 text-center">
-              <p className="text-gray-600">Nenhum evento disponível no momento.</p>
+              <p className="text-gray-600">Nenhum evento disponivel no momento.</p>
             </CardContent>
           </Card>
         ) : (
@@ -242,7 +257,6 @@ export default function EventList() {
                   </CardContent>
 
                   <CardFooter className="flex flex-col gap-2">
-                   
                     <Button
                       onClick={() => setLocation(`/eventos/${evento.id}`)}
                       disabled={!podeIrDetalhes}
