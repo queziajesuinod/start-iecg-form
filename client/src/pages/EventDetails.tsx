@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, useRoute } from 'wouter';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -210,10 +210,8 @@ function DebouncedTextarea({
 
 export default function EventDetails() {
   const [, setLocation] = useLocation();
-  
-  // Extrair ID da URL diretamente (UUID string)
-  const pathParts = window.location.pathname.split('/');
-  const eventId = pathParts[pathParts.length - 1];
+  const [, params] = useRoute('/eventos/:id');
+  const eventId = (params?.id ?? '').trim();
 
   const [evento, setEvento] = useState<Event | null>(null);
   const [lotes, setLotes] = useState<EventBatch[]>([]);
@@ -332,8 +330,14 @@ export default function EventDetails() {
   };
 
   useEffect(() => {
+    if (!eventId) {
+      setLoadingEvent(false);
+      setLoadingDetails(false);
+      setLocation('/eventos');
+      return;
+    }
     carregarDados();
-  }, [eventId]);
+  }, [eventId, setLocation]);
 
   const adicionarInscrito = () => {
     const limite = evento?.maxPerBuyer || 10;
