@@ -231,21 +231,30 @@ export default function RegistrationView() {
     registration.remaining > 0;
 
   const eventIdForRegistration = registration?.event?.id;
-  const optionsForMethod = paymentOptions.filter(
-    (option) => option.paymentType === method && option.eventId === eventIdForRegistration
+  const optionsForMethod = useMemo(
+    () =>
+      paymentOptions.filter(
+        (option) => option.paymentType === method && option.eventId === eventIdForRegistration
+      ),
+    [eventIdForRegistration, method, paymentOptions]
   );
 
   useEffect(() => {
+    const selectedId = String(selectedPaymentOptionId || '');
     if (!optionsForMethod.length) {
-      setSelectedPaymentOptionId('');
+      if (selectedId) {
+        setSelectedPaymentOptionId('');
+      }
       return;
     }
-    if (!optionsForMethod.some((option) => option.id === selectedPaymentOptionId)) {
-      setSelectedPaymentOptionId(optionsForMethod[0].id);
+    if (!optionsForMethod.some((option) => String(option.id) === selectedId)) {
+      setSelectedPaymentOptionId(String(optionsForMethod[0].id));
     }
-  }, [method, optionsForMethod]);
+  }, [optionsForMethod, selectedPaymentOptionId]);
 
-  const selectedPaymentOption = paymentOptions.find((option) => option.id === selectedPaymentOptionId);
+  const selectedPaymentOption = paymentOptions.find(
+    (option) => String(option.id) === String(selectedPaymentOptionId)
+  );
   const showCreditCardFields =
     method === 'credit_card' && selectedPaymentOption?.paymentType === 'credit_card';
   const maxInstallments = Math.max(1, selectedPaymentOption?.maxInstallments ?? 1);
@@ -283,7 +292,9 @@ export default function RegistrationView() {
       return;
     }
 
-    const selectedPaymentOption = paymentOptions.find((option) => option.id === selectedPaymentOptionId);
+    const selectedPaymentOption = paymentOptions.find(
+      (option) => String(option.id) === String(selectedPaymentOptionId)
+    );
     if (!selectedPaymentOption) {
       toast.error('Opção de pagamento inválida.');
       return;
@@ -635,7 +646,7 @@ export default function RegistrationView() {
                                   : `R$ ${option.interestRate.toFixed(2)} fixo`
                                 : 'Sem taxas';
                             return (
-                              <SelectItem key={option.id} value={option.id}>
+                              <SelectItem key={option.id} value={String(option.id)}>
                                 {methodLabel} — {interestText}
                               </SelectItem>
                             );

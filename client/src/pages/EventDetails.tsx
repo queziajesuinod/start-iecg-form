@@ -935,21 +935,31 @@ export default function EventDetails() {
 
   useEffect(() => {
     if (evento?.registrationPaymentMode !== 'BALANCE_DUE') {
-      setValorPagamento('');
-      setValorPagamentoEditado(false);
+      if (valorPagamento !== '') {
+        setValorPagamento('');
+      }
+      if (valorPagamentoEditado) {
+        setValorPagamentoEditado(false);
+      }
       return;
     }
     if (valorPagamentoEditado) return;
     if (!totalComTaxas) {
-      setValorPagamento('');
+      if (valorPagamento !== '') {
+        setValorPagamento('');
+      }
       return;
     }
     const sugerido = evento.depositAmount ?? totalComTaxas;
-    setValorPagamento(sugerido.toFixed(2));
+    const proximoValor = sugerido.toFixed(2);
+    if (valorPagamento !== proximoValor) {
+      setValorPagamento(proximoValor);
+    }
   }, [
     evento?.registrationPaymentMode,
     evento?.depositAmount,
     totalComTaxas,
+    valorPagamento,
     valorPagamentoEditado,
   ]);
 

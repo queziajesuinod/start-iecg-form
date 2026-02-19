@@ -141,10 +141,10 @@ export default function StartForm() {
   const isEncaminhamento = decisaoSelecionada === "encaminhamento_celula";
 
   useEffect(() => {
-    if (isEncaminhamento) {
+    if (isEncaminhamento && !direcionarCelula) {
       setValue("direcionar_celula", true);
     }
-  }, [isEncaminhamento, setValue]);
+  }, [isEncaminhamento, direcionarCelula, setValue]);
 
   const submitMutation = trpc.direcionamentos.submit.useMutation({
     onSuccess: () => {

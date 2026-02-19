@@ -1,7 +1,7 @@
 # Dependencies
 **/node_modules
 .pnpm-store/
-
+docker-compose.traefik.yml
 # Build outputs
 dist/
 build/
@@ -105,3 +105,4 @@ temp/
 *.db
 *.sqlite
 *.sqlite3
+
