@@ -213,6 +213,13 @@ export interface CreateRegistrationPaymentPayload {
   paymentData?: RegistrationPaymentData;
 }
 
+interface PublicListOptions {
+  skipCache?: boolean;
+}
+
+const normalizePublicEventId = (eventId: string) =>
+  (eventId || '').trim().replace(/\/+$/, '');
+
 // Listar eventos públicos ativos
 export const listarEventosPublicos = async (): Promise<Event[]> => {
   const response = await api.get('/api/public/events');
@@ -237,20 +244,32 @@ export const buscarEventoPublico = async (id: string): Promise<Event> => {
 };
 
 // Listar lotes de um evento
-export const listarLotesPublicos = async (eventId: string): Promise<EventBatch[]> => {
-  const cacheKey = `batches-${eventId}`;
-  
-  // Tentar cache primeiro
-  const cached = getCached<EventBatch[]>(cacheKey);
-  if (cached) {
-    return cached;
+export const listarLotesPublicos = async (
+  eventId: string,
+  options?: PublicListOptions
+): Promise<EventBatch[]> => {
+  const normalizedEventId = normalizePublicEventId(eventId);
+  if (!normalizedEventId) {
+    throw new Error('EventId invalido para listar lotes.');
   }
-  
-  // Se não tem cache, buscar da API
-  const response = await api.get(`/api/public/events/${eventId}/batches`);
-  setCache(cacheKey, response.data);
-  
-  return response.data;
+
+  const cacheKey = `batches-${normalizedEventId}`;
+
+  if (!options?.skipCache) {
+    const cached = getCached<EventBatch[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+
+  try {
+    const response = await api.get(`/api/public/events/${normalizedEventId}/batches`);
+    setCache(cacheKey, response.data);
+    return response.data;
+  } catch (error) {
+    cache.delete(cacheKey);
+    throw error;
+  }
 };
 
 // Listar campos do formulário
@@ -334,3 +353,4 @@ export const buscarFormasPagamento = async (eventId: string): Promise<PaymentOpt
 };
 
 export default api;
+

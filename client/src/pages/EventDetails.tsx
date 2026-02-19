@@ -409,7 +409,7 @@ export default function EventDetails() {
         }),
 
       // Promise 2: Buscar lotes (1s)
-      listarLotesPublicos(eventId)
+      listarLotesPublicos(eventId, { skipCache: true })
         .then(data => {
           setLotes(data.filter((l) => l.isActive));
           return data;
@@ -620,7 +620,7 @@ export default function EventDetails() {
 
   const ensureSelectedBatchesStillAvailable = async () => {
     try {
-      const refreshedLotes = await listarLotesPublicos(eventId);
+      const refreshedLotes = await listarLotesPublicos(eventId, { skipCache: true });
       setLotes(refreshedLotes.filter((lote) => lote.isActive));
 
       for (let index = 0; index < inscritos.length; index++) {

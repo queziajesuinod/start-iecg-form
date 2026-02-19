@@ -17,6 +17,7 @@ export default function EventList() {
     activeBatchNames: string[];
   };
   const [batchAvailability, setBatchAvailability] = useState<Record<string, BatchAvailability>>({});
+  const [loadingBatchAvailability, setLoadingBatchAvailability] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,6 +31,8 @@ export default function EventList() {
         const data = await listarEventosPublicos();
         if (!mounted) return;
         setEventos(data);
+        setBatchAvailability({});
+        setLoadingBatchAvailability({});
         setLoading(false);
         void verificarDisponibilidadeLotes(data);
       } catch (err) {
@@ -53,6 +56,8 @@ export default function EventList() {
       setError(null);
       const data = await listarEventosPublicos();
       setEventos(data);
+      setBatchAvailability({});
+      setLoadingBatchAvailability({});
       setLoading(false);
       void verificarDisponibilidadeLotes(data);
     } catch (err) {
@@ -66,14 +71,19 @@ export default function EventList() {
   const verificarDisponibilidadeLotes = async (eventos: Event[]) => {
     if (!eventos.length) {
       setBatchAvailability({});
+      setLoadingBatchAvailability({});
       return;
     }
+
+    setLoadingBatchAvailability(
+      Object.fromEntries(eventos.map((evento) => [evento.id, true]))
+    );
 
     const hoje = new Date();
     const availabilityEntries = await Promise.all(
       eventos.map(async (evento) => {
         try {
-          const lotes = await listarLotesPublicos(evento.id);
+          const lotes = await listarLotesPublicos(evento.id, { skipCache: true });
           const activeBatches = getActiveBatches(lotes, hoje);
           return {
             id: evento.id,
@@ -102,6 +112,9 @@ export default function EventList() {
       };
     });
     setBatchAvailability(availabilityByEvent);
+    setLoadingBatchAvailability(
+      Object.fromEntries(eventos.map((evento) => [evento.id, false]))
+    );
   };
 
   const formatarData = (data: string) => {
@@ -174,9 +187,16 @@ export default function EventList() {
               const vagasDisponiveis = calcularVagasDisponiveis(evento);
               const esgotado = vagasDisponiveis !== null && vagasDisponiveis <= 0;
               const availability = batchAvailability[evento.id];
+              const availabilityLoading = loadingBatchAvailability[evento.id] ?? true;
               const possuiLoteAtivo = availability?.hasActiveBatch ?? false;
-              const podeIrDetalhes = possuiLoteAtivo && !esgotado;
-              const botaoLabel = esgotado ? 'Esgotado' : possuiLoteAtivo ? 'Ver Detalhes' : 'Encerrado';
+              const podeIrDetalhes = !availabilityLoading && possuiLoteAtivo && !esgotado;
+              const botaoLabel = availabilityLoading
+                ? 'Verificando...'
+                : esgotado
+                  ? 'Esgotado'
+                  : possuiLoteAtivo
+                    ? 'Ver Detalhes'
+                    : 'Encerrado';
 
               return (
                 <Card
