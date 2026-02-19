@@ -232,6 +232,7 @@ export default function EventDetails() {
     id: string;
     batchId: string | null;  // Lote específico do inscrito
   }>>([{ dados: {}, salvo: false, id: '1', batchId: null }]);
+  const [inscritoAbertoId, setInscritoAbertoId] = useState<string>('1');
   const [formaPagamento, setFormaPagamento] = useState<string>(''); // ID da forma de pagamento
   const [parcelas, setParcelas] = useState(1);
   const [valorPagamento, setValorPagamento] = useState('');
@@ -381,6 +382,14 @@ export default function EventDetails() {
       )
     );
   };
+
+  useEffect(() => {
+    if (!inscritos.length) return;
+    const inscritoAbertoExiste = inscritos.some((i) => i.id === inscritoAbertoId);
+    if (!inscritoAbertoId || !inscritoAbertoExiste) {
+      setInscritoAbertoId(inscritos[0].id);
+    }
+  }, [inscritos, inscritoAbertoId]);
 
   const carregarDados = async () => {
     setLoadingEvent(true);
@@ -1061,27 +1070,19 @@ export default function EventDetails() {
           {camposInscrito.length > 0 && (
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Dados dos Inscritos</CardTitle>
-                    <CardDescription>
-                      {inscritos.length} inscrito(s) - {inscritos.filter((i) => i.salvo).length} salvo(s)
-                    </CardDescription>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={adicionarInscrito}
-                    disabled={!hasLotAvailable || inscritos.length >= (evento?.maxPerBuyer || 10)}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Adicionar Inscrito
-                  </Button>
-                </div>
+                <CardTitle>Dados dos Inscritos</CardTitle>
+                <CardDescription>
+                  {inscritos.length} inscrito(s) - {inscritos.filter((i) => i.salvo).length} salvo(s)
+                </CardDescription>
               </CardHeader>
-              <CardContent>
-                <Accordion type="single" collapsible className="w-full">
+              <CardContent className="space-y-4">
+                <Accordion
+                  type="single"
+                  collapsible
+                  className="w-full"
+                  value={inscritoAbertoId}
+                  onValueChange={setInscritoAbertoId}
+                >
                   {inscritos.map((inscrito, index) => (
                     <AccordionItem key={inscrito.id} value={inscrito.id}>
                       <AccordionTrigger className="hover:no-underline">
@@ -1190,6 +1191,16 @@ export default function EventDetails() {
                     </AccordionItem>
                   ))}
                 </Accordion>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={adicionarInscrito}
+                  disabled={!hasLotAvailable || inscritos.length >= (evento?.maxPerBuyer || 10)}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Adicionar Inscrito
+                </Button>
             </CardContent>
           </Card>
         )}
