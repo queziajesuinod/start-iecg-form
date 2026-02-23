@@ -10,11 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { geocodeAddress } from "@/lib/geocode";
 import { trpc } from "@/lib/trpc";
 import { CAMPUS_NAMES } from "@shared/campus";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CheckCircle2, Heart, Play, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -83,6 +84,7 @@ const formSchema = z
     rede: z.string().min(1, "Rede é obrigatória"),
     decisao: z.string().min(1, "Decisão é obrigatória"),
     direcionar_celula: z.boolean().default(false),
+    cep_apelo: z.string().optional(),
     bairro_apelo: z.string().optional(),
     cidade_apelo: z.string().optional(),
     estado_apelo: z.string().optional(),
@@ -92,11 +94,20 @@ const formSchema = z
   })
   .superRefine((data, ctx) => {
     if (data.direcionar_celula) {
-      if (!data.bairro_apelo || data.bairro_apelo.trim().length === 0) {
+      const cepDigits = (data.cep_apelo || "").replace(/\D/g, "");
+      if (cepDigits.length !== 8) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["cep_apelo"],
+          message: "CEP é obrigatório para encaminhamento",
+        });
+      }
+
+      if (!(data.bairro_apelo || "").trim()) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["bairro_apelo"],
-          message: "Bairro e obrigatorio para encaminhamento",
+          message: "Bairro é obrigatório para encaminhamento",
         });
       }
     }
@@ -107,6 +118,9 @@ type FormData = z.infer<typeof formSchema>;
 export default function StartForm() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [bairroTemp, setBairroTemp] = useState("");
+  const [cepLookupLoading, setCepLookupLoading] = useState(false);
+  const lastCepLookupRef = useRef("");
+  const cepLookupRequestRef = useRef(0);
 
   const {
     register,
@@ -126,6 +140,7 @@ export default function StartForm() {
       rede: "",
       decisao: "",
       direcionar_celula: false,
+      cep_apelo: "",
       bairro_apelo: "",
       cidade_apelo: "Campo Grande",
       estado_apelo: "Mato Grosso do Sul",
@@ -139,6 +154,7 @@ export default function StartForm() {
   const direcionarCelula = watch("direcionar_celula");
   const bairrosProximos = watch("bairro_proximo");
   const isEncaminhamento = decisaoSelecionada === "encaminhamento_celula";
+  const submitLogPrefix = "[StartForm][direcionamentos.submit]";
 
   useEffect(() => {
     if (isEncaminhamento && !direcionarCelula) {
@@ -147,13 +163,28 @@ export default function StartForm() {
   }, [isEncaminhamento, direcionarCelula, setValue]);
 
   const submitMutation = trpc.direcionamentos.submit.useMutation({
-    onSuccess: () => {
+    onMutate: variables => {
+      console.log(`${submitLogPrefix} enviando payload`, {
+        decisao: variables.decisao,
+        direcionar_celula: variables.direcionar_celula,
+        status: variables.status,
+        campus_iecg: variables.campus_iecg,
+        possui_cep_apelo: Boolean(variables.cep_apelo),
+        bairros_proximos_qtd: variables.bairro_proximo.length,
+        dias_semana_qtd: variables.dias_semana?.length ?? 0,
+        cidade_apelo: variables.cidade_apelo,
+        estado_apelo: variables.estado_apelo,
+      });
+    },
+    onSuccess: data => {
+      console.log(`${submitLogPrefix} sucesso`, data);
       window.scrollTo({ top: 0, behavior: "smooth" });
       setShowSuccess(true);
       reset();
       setTimeout(() => setShowSuccess(false), 5000);
     },
     onError: error => {
+      console.error(`${submitLogPrefix} erro`, error);
       toast.error("Erro ao enviar", {
         description: error.message || "Tente novamente mais tarde",
       });
@@ -161,28 +192,90 @@ export default function StartForm() {
   });
 
   const onSubmit = async (data: FormData) => {
-    const status = !data.direcionar_celula && data.decisao !== "encaminhamento_celula"
+    const decisao = data.direcionar_celula
+      ? "encaminhamento_celula"
+      : data.decisao;
+
+    const status = !data.direcionar_celula && decisao !== "encaminhamento_celula"
       ? "NAO_HAVERAR_DIRECIONAMENTO"
       : "APELO_CADASTRADO";
 
+    const cepApelo = (data.cep_apelo || "").replace(/\D/g, "");
+    let bairroApelo = (data.bairro_apelo || "").trim();
+    let cidadeApelo = (data.cidade_apelo || "").trim();
+    let estadoApelo = (data.estado_apelo || "").trim();
+
+    if (data.direcionar_celula && cepApelo.length === 8) {
+      if (!bairroApelo || !cidadeApelo || !estadoApelo) {
+        const addressByCep = await getAddressFromCep(cepApelo);
+        bairroApelo = bairroApelo || addressByCep?.bairro || "";
+        cidadeApelo = cidadeApelo || addressByCep?.cidade || "";
+        estadoApelo = estadoApelo || addressByCep?.estado || "";
+      }
+
+      if (!bairroApelo || !cidadeApelo || !estadoApelo) {
+        const geo = await geocodeAddress(cepApelo).catch(() => null);
+        bairroApelo = bairroApelo || geo?.bairro || "";
+        cidadeApelo = cidadeApelo || geo?.cidade || "";
+        estadoApelo = estadoApelo || geo?.estado || "";
+      }
+    }
+
+    if (data.direcionar_celula) {
+      if (!bairroApelo) {
+        toast.error("Bairro é obrigatório para encaminhamento");
+        return;
+      }
+
+      setValue("bairro_apelo", bairroApelo, { shouldDirty: true });
+      setValue("cidade_apelo", cidadeApelo, { shouldDirty: true });
+      setValue("estado_apelo", estadoApelo, { shouldDirty: true });
+    }
+
     const payload = {
       nome: data.nome,
-      decisao: data.decisao,
+      decisao,
       whatsapp: data.whatsapp.replace(/\D/g, ""),
       rede: data.rede,
-      bairro_apelo: data.bairro_apelo || "",
-      cidade_apelo: data.cidade_apelo || "Campo Grande",
-      estado_apelo: data.estado_apelo || "Mato Grosso do Sul",
       idade: data.idade,
       bairro_proximo: data.bairro_proximo || [],
+      dias_semana: data.dias_semana || [],
       direcionar_celula: data.direcionar_celula,
       campus_iecg: data.campus,
       status,
-      dias_semana: data.dias_semana || [],
       observacao: data.observacao || "",
+      ...(data.direcionar_celula
+        ? {
+            cep_apelo: cepApelo,
+            bairro_apelo: bairroApelo,
+            cidade_apelo: cidadeApelo,
+            estado_apelo: estadoApelo,
+          }
+        : {}),
     };
 
-    await submitMutation.mutateAsync(payload);
+    console.log(`${submitLogPrefix} preparando submit`, {
+      decisao_original: data.decisao,
+      decisao_final: decisao,
+      direcionar_celula: data.direcionar_celula,
+      campus_iecg: data.campus,
+      possui_cep_apelo: Boolean(payload.cep_apelo),
+      bairros_proximos_qtd: payload.bairro_proximo.length,
+      dias_semana_qtd: payload.dias_semana.length,
+      cidade_apelo: payload.cidade_apelo,
+      estado_apelo: payload.estado_apelo,
+      cep_apelo: payload.cep_apelo,
+      bairro_apelo: payload.bairro_apelo,
+    });
+
+    const startedAt = Date.now();
+    try {
+      await submitMutation.mutateAsync(payload);
+    } finally {
+      console.log(`${submitLogPrefix} fluxo concluido`, {
+        duracao_ms: Date.now() - startedAt,
+      });
+    }
   };
 
   const formatWhatsapp = (value: string) => {
@@ -195,6 +288,141 @@ export default function StartForm() {
   const handleWhatsappChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatWhatsapp(e.target.value);
     setValue("whatsapp", formatted);
+  };
+
+  type CepAddressData = {
+    bairro: string;
+    cidade: string;
+    estado: string;
+  };
+
+  const getAddressFromCep = async (cepDigits: string): Promise<CepAddressData | null> => {
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cepDigits}/json/`);
+      if (!response.ok) return null;
+
+      const data = (await response.json()) as {
+        erro?: boolean;
+        bairro?: string;
+        localidade?: string;
+        uf?: string;
+      };
+
+      if (data?.erro) return null;
+      return {
+        bairro: (data?.bairro || "").trim(),
+        cidade: (data?.localidade || "").trim(),
+        estado: (data?.uf || "").trim(),
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const fillAddressFromCep = async (cepDigits: string) => {
+    const requestId = ++cepLookupRequestRef.current;
+    setCepLookupLoading(true);
+    try {
+      if (requestId !== cepLookupRequestRef.current) {
+        return;
+      }
+
+      const addressByCep = await getAddressFromCep(cepDigits);
+      if (requestId !== cepLookupRequestRef.current) {
+        return;
+      }
+
+      if (addressByCep?.bairro) {
+        setValue("bairro_apelo", addressByCep.bairro, {
+          shouldDirty: true,
+          shouldTouch: true,
+          shouldValidate: false,
+        });
+      }
+
+      if (addressByCep?.cidade) {
+        setValue("cidade_apelo", addressByCep.cidade, {
+          shouldDirty: true,
+          shouldTouch: true,
+          shouldValidate: false,
+        });
+      }
+
+      if (addressByCep?.estado) {
+        setValue("estado_apelo", addressByCep.estado, {
+          shouldDirty: true,
+          shouldTouch: true,
+          shouldValidate: false,
+        });
+      }
+
+      const missingBairro = !addressByCep?.bairro;
+      const missingCidade = !addressByCep?.cidade;
+      const missingEstado = !addressByCep?.estado;
+
+      if (missingBairro || missingCidade || missingEstado) {
+        const geo = await geocodeAddress(cepDigits);
+        if (requestId !== cepLookupRequestRef.current) {
+          return;
+        }
+        if (geo?.bairro && missingBairro) {
+          setValue("bairro_apelo", geo.bairro, {
+            shouldDirty: true,
+            shouldTouch: true,
+            shouldValidate: false,
+          });
+        }
+        if (geo?.cidade && missingCidade) {
+          setValue("cidade_apelo", geo.cidade, {
+            shouldDirty: true,
+            shouldTouch: true,
+            shouldValidate: false,
+          });
+        }
+        if (geo?.estado && missingEstado) {
+          setValue("estado_apelo", geo.estado, {
+            shouldDirty: true,
+            shouldTouch: true,
+            shouldValidate: false,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao buscar endereco pelo CEP:", error);
+    } finally {
+      if (requestId === cepLookupRequestRef.current) {
+        setCepLookupLoading(false);
+      }
+    }
+  };
+
+  const formatCep = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 8);
+    if (digits.length <= 5) return digits;
+    return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+  };
+
+  const handleCepChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatCep(e.target.value);
+    setValue("cep_apelo", formatted);
+    const cepDigits = formatted.replace(/\D/g, "");
+
+    if (cepDigits.length !== 8) {
+      lastCepLookupRef.current = "";
+      cepLookupRequestRef.current += 1;
+      setValue("bairro_apelo", "");
+      setValue("cidade_apelo", "");
+      setValue("estado_apelo", "");
+      setCepLookupLoading(false);
+      return;
+    }
+
+    if (lastCepLookupRef.current === cepDigits) {
+      return;
+    }
+
+    lastCepLookupRef.current = cepDigits;
+    void fillAddressFromCep(cepDigits);
   };
 
   const addBairroProximo = () => {
@@ -449,33 +677,50 @@ export default function StartForm() {
                   Informações de localização
                 </p>
 
-                {/* Bairro */}
+                {/* CEP */}
                 <div className="space-y-2">
-                  <Label htmlFor="bairro_apelo">
-                    Bairro onde mora
+                  <Label htmlFor="cep_apelo">
+                    CEP
                     {direcionarCelula && (
                       <span className="text-red-500"> *</span>
                     )}
                   </Label>
                   <Input
+                    id="cep_apelo"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="00000-000"
+                    className="border-2 border-gray-300 focus:border-blue-600"
+                    {...register("cep_apelo")}
+                    onChange={handleCepChange}
+                  />
+                  {errors.cep_apelo && (
+                    <p className="text-sm text-red-600">
+                      {errors.cep_apelo.message}
+                    </p>
+                  )}
+                  {cepLookupLoading && (
+                    <p className="text-xs text-gray-500">Buscando endereco pelo CEP...</p>
+                  )}
+                </div>
+
+                {/* Bairro */}
+                <div className="space-y-2">
+                  <Label htmlFor="bairro_apelo">Bairro</Label>
+                  <Input
                     id="bairro_apelo"
-                    placeholder="Seu bairro"
+                    placeholder="Preenchido automaticamente pelo CEP"
                     className="border-2 border-gray-300 focus:border-blue-600"
                     {...register("bairro_apelo")}
                   />
-                  {errors.bairro_apelo && (
-                    <p className="text-sm text-red-600">
-                      {errors.bairro_apelo.message}
-                    </p>
-                  )}
                 </div>
 
                 {/* Cidade */}
                 <div className="space-y-2">
-                  <Label htmlFor="cidade_apelo">Cidade:</Label>
+                  <Label htmlFor="cidade_apelo">Cidade</Label>
                   <Input
                     id="cidade_apelo"
-                    placeholder="Sua cidade"
+                    placeholder="Preenchido automaticamente pelo CEP"
                     className="border-2 border-gray-300 focus:border-blue-600"
                     {...register("cidade_apelo")}
                   />
@@ -483,10 +728,10 @@ export default function StartForm() {
 
                 {/* Estado */}
                 <div className="space-y-2">
-                  <Label htmlFor="estado_apelo">Estado:</Label>
+                  <Label htmlFor="estado_apelo">Estado</Label>
                   <Input
                     id="estado_apelo"
-                    placeholder="Seu estado"
+                    placeholder="Preenchido automaticamente pelo CEP"
                     className="border-2 border-gray-300 focus:border-blue-600"
                     {...register("estado_apelo")}
                   />
@@ -540,12 +785,11 @@ export default function StartForm() {
                     </div>
                   )}
                 </div>
-
-                {/* Dias de preferência */}
+                {/* Dias de preferencia */}
                 <div className="space-y-2">
-                  <Label>Dias de preferência (opcional)</Label>
+                  <Label>Dias de preferencia (opcional)</Label>
                   <p className="text-xs text-gray-500">
-                    Selecione um ou mais dias. Quarta e domingo estão bloqueados.
+                    Selecione um ou mais dias. Quarta e domingo estao bloqueados.
                   </p>
                   <Controller
                     name="dias_semana"
@@ -580,7 +824,6 @@ export default function StartForm() {
                     )}
                   />
                 </div>
-
                 {/* Observação */}
                 <div className="space-y-2">
                   <Label htmlFor="observacao">Observação (opcional)</Label>
@@ -625,3 +868,4 @@ export default function StartForm() {
     </div>
   );
 }
+

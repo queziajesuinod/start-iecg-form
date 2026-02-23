@@ -4,8 +4,24 @@ import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
+const sanitizeBaseUrl = (value: string | undefined): string | null => {
+  if (!value) return null;
+  const cleaned = value.trim().replace(/^['"]+|['"]+$/g, "").replace(/\/+$/, "");
+  if (!cleaned) return null;
 
-const PUBLIC_API_BASE = "https://portal.iecg.com.br/public";
+  try {
+    new URL(cleaned);
+    return cleaned;
+  } catch {
+    return null;
+  }
+};
+
+const apiUrlFromEnv = sanitizeBaseUrl(process.env.VITE_API_URL ?? process.env.API_URL);
+const API_URL = (apiUrlFromEnv ?? "http://localhost:3005").replace(/\/public$/i, "");
+
+const PUBLIC_API_BASE = API_URL + "/public";
+const DIRECIONAMENTOS_LOG_PREFIX = "[direcionamentos.submit]";
 
 type CampusOption = {
   id: string;
@@ -95,21 +111,59 @@ export const appRouter = router({
           decisao: z.string(),
           whatsapp: z.string(),
           rede: z.string(),
-          bairro_apelo: z.string(),
-          cidade_apelo: z.string(),
-          estado_apelo: z.string(),
+          cep_apelo: z.string().optional(),
+          bairro_apelo: z.string().optional(),
+          cidade_apelo: z.string().optional(),
+          estado_apelo: z.string().optional(),
           idade: z.number(),
           bairro_proximo: z.array(z.string()),
+          dias_semana: z.array(z.string()).default([]),
           direcionar_celula: z.boolean(),
           observacao: z.string().optional(),
           campus_iecg: z.string(),
           status: z.string(),
-          dias_semana: z.array(z.string()),
         })
       )
       .mutation(async ({ input }) => {
+        const requestId = `dir-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const startedAt = Date.now();
+
+        const cepApelo = (input.cep_apelo || "").replace(/\D/g, "");
+        const bairroApelo = (input.bairro_apelo || "").trim();
+
+        if (input.direcionar_celula) {
+          if (cepApelo.length !== 8) {
+            throw new Error("CEP inválido para encaminhamento");
+          }
+          if (!bairroApelo) {
+            throw new Error("Bairro é obrigatório para encaminhamento");
+          }
+        }
+
+        console.log(`${DIRECIONAMENTOS_LOG_PREFIX} [${requestId}] payload recebido`, {
+          nome: input.nome,
+          decisao: input.decisao,
+          rede: input.rede,
+          idade: input.idade,
+          direcionar_celula: input.direcionar_celula,
+          campus_iecg: input.campus_iecg,
+          status: input.status,
+          possui_cep_apelo: Boolean(input.cep_apelo),
+          cep_apelo: cepApelo,
+          bairro_apelo: bairroApelo,
+          bairros_proximos_qtd: input.bairro_proximo.length,
+          dias_semana_qtd: input.dias_semana.length,
+          cidade_apelo: input.cidade_apelo,
+          estado_apelo: input.estado_apelo,
+        });
+
         try {
-          const response = await fetch(`${PUBLIC_API_BASE}/direcionamentos`, {
+          const endpoint = `${PUBLIC_API_BASE}/direcionamentos`;
+          console.log(`${DIRECIONAMENTOS_LOG_PREFIX} [${requestId}] enviando para API`, {
+            endpoint,
+          });
+
+          const response = await fetch(endpoint, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -117,17 +171,47 @@ export const appRouter = router({
             body: JSON.stringify(input),
           });
 
+          const responseText = await response.text();
+          let responseData: unknown = null;
+          if (responseText.trim().length > 0) {
+            try {
+              responseData = JSON.parse(responseText);
+            } catch {
+              responseData = responseText;
+            }
+          }
+
+          console.log(`${DIRECIONAMENTOS_LOG_PREFIX} [${requestId}] resposta da API`, {
+            status: response.status,
+            ok: response.ok,
+            duracao_ms: Date.now() - startedAt,
+          });
+
           if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
+            console.error(`${DIRECIONAMENTOS_LOG_PREFIX} [${requestId}] erro retornado`, {
+              status: response.status,
+              body: responseData,
+            });
+            const errorData =
+              responseData && typeof responseData === "object"
+                ? (responseData as Record<string, unknown>)
+                : {};
+            const errorText =
+              typeof responseData === "string" && responseData.trim().length > 0
+                ? responseData
+                : null;
             throw new Error(
-              errorData?.erro || errorData?.message || "Erro ao enviar o apelo."
+              (typeof errorData.erro === "string" && errorData.erro) ||
+                (typeof errorData.message === "string" && errorData.message) ||
+                errorText ||
+                "Erro ao enviar o apelo."
             );
           }
 
-          const data = await response.json();
-          return { success: true, data };
+          console.log(`${DIRECIONAMENTOS_LOG_PREFIX} [${requestId}] envio concluido`);
+          return { success: true, data: responseData };
         } catch (error: any) {
-          console.error("Erro ao enviar direcionamento:", error);
+          console.error(`${DIRECIONAMENTOS_LOG_PREFIX} [${requestId}] falha`, error);
           throw new Error(error.message || "Erro ao enviar o apelo.");
         }
       }),
