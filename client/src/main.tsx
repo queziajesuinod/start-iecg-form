@@ -8,6 +8,13 @@ import App from "./App";
 import { getLoginUrl } from "./const";
 import "./index.css";
 
+if (typeof document !== "undefined") {
+  document.documentElement.setAttribute("translate", "no");
+  document.documentElement.classList.add("notranslate");
+  document.body.setAttribute("translate", "no");
+  document.body.classList.add("notranslate");
+}
+
 const queryClient = new QueryClient();
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
