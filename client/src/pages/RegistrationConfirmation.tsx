@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, CheckCircle, Clock, Copy, QrCode } from 'lucide-react';
 import { toast } from 'sonner';
 import { consultarInscricao } from '@/lib/eventsApi';
+import { getCieloDeniedMessage } from '@/lib/paymentDenialReason';
 
 export default function RegistrationConfirmation() {
   const [, params] = useRoute('/inscricao/:orderCode');
@@ -102,6 +103,7 @@ export default function RegistrationConfirmation() {
   const isPending = ['pending', 'waiting', 'authorized', 'notfinished'].includes(normalizedStatus);
   const isConfirmed = ['confirmed', 'paid', 'captured'].includes(normalizedStatus);
   const isDenied = ['failed', 'denied', 'deniedbycielo', 'canceled', 'cancelled', 'aborted'].includes(normalizedStatus);
+  const deniedReasonMessage = getCieloDeniedMessage(registration);
 
   return (
     <div className="container mx-auto p-6 max-w-2xl">
@@ -206,7 +208,7 @@ export default function RegistrationConfirmation() {
               <div className="p-4 bg-red-50 rounded-lg">
                 <p className="text-red-900 font-medium">Pagamento nao autorizado.</p>
                 <p className="text-sm text-red-700 mt-1">
-                  Revise os dados de pagamento e tente novamente.
+                  {deniedReasonMessage || 'Revise os dados de pagamento e tente novamente.'}
                 </p>
               </div>
             </div>

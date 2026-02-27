@@ -31,6 +31,7 @@ import {
 import { maskCPForCNPJ, maskPhone, validateCPForCNPJ, validateEmail, removeNonDigits, maskCreditCard, maskCardExpiry, maskCVV } from '@/lib/masks';
 import { isBatchActiveNow } from '@/lib/eventUtils';
 import { applyInstallmentInterest, formatInstallmentInterest, getInstallmentInterestRule } from '@/lib/installmentInterest';
+import { getCieloDeniedMessage } from '@/lib/paymentDenialReason';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -312,8 +313,10 @@ export default function EventDetails() {
       }
 
       if (['failed', 'canceled', 'cancelled', 'denied', 'deniedbycielo', 'aborted'].includes(normalizedStatus)) {
+        const denialMessageFromReturnCode = getCieloDeniedMessage(registration);
         const backendMessage =
           cardPayment?.notes ||
+          denialMessageFromReturnCode ||
           getMessageFromPayload(registration) ||
           payload.message ||
           'Nao autorizado a compra pelo cartao de credito.';
