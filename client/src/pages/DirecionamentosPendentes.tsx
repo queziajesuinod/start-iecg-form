@@ -306,11 +306,11 @@ function WizardAcompanhamento({ item, wiz, onRetorno, onFeedback, onFoiCelula, o
 
       {wiz.step === 'q_feedback' && (
         <Pergunta
-          texto="Teve algum feedback desde o último contato?"
-          descricao="Este apelo já está em consolidação."
+          texto="Houve algum retorno desde o último contato?"
+          descricao="Esse apelo já estava em acompanhamento — conseguiu avançar com essa pessoa?"
           onSim={() => onFeedback(true)}
           onNao={() => onFeedback(false)}
-          labelNao="Sem engajamento"
+          labelNao="Não houve retorno"
         />
       )}
 
