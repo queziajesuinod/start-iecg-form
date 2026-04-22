@@ -51,6 +51,15 @@ const formatPhone = (digits: string) => {
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
 };
 
+const DECISAO_LABEL: Record<string, string> = {
+  encaminhamento_celula: 'Encaminhamento de Célula',
+  apelo_decisao:         'Apelo',
+  apelo_volta:           'Reconciliação',
+};
+
+const formatDecisao = (decisao?: string) =>
+  decisao ? (DECISAO_LABEL[decisao] ?? decisao) : '-';
+
 const formatDate = (iso?: string) => {
   if (!iso) return '-';
   try {
@@ -220,7 +229,7 @@ export default function DirecionamentosPendentes() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-sm">
-                    <InfoItem label="Decisão"  value={item.decisao || '-'} />
+                    <InfoItem label="Decisão"  value={formatDecisao(item.decisao)} />
                     <InfoItem label="Rede"     value={item.rede || '-'} />
                     <InfoItem label="Bairro"   value={item.bairro_apelo || '-'} />
                     <InfoItem label="Cidade"   value={[item.cidade_apelo, item.estado_apelo].filter(Boolean).join(' - ') || '-'} />
