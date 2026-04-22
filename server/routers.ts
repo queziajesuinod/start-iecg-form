@@ -104,6 +104,74 @@ export const appRouter = router({
   }),
 
   direcionamentos: router({
+    atualizarStatus: publicProcedure
+      .input(
+        z.object({
+          id: z.string().min(1),
+          status: z.enum([
+            "CONTATO_LIDER_SEM_RETORNO",
+            "EM_CONSOLIDACAO",
+            "CONSOLIDACAO_INTERROMPIDA",
+            "CONSOLIDADO_CELULA",
+          ]),
+          motivo: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const response = await fetch(
+          `${PUBLIC_API_BASE}/direcionamentos/${input.id}/status`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: input.status, motivo: input.motivo }),
+          }
+        );
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(
+            (data as any)?.message ||
+            (data as any)?.erro ||
+            `Erro ao atualizar status (${response.status})`
+          );
+        }
+
+        return data;
+      }),
+
+    buscarPendentes: publicProcedure
+      .input(
+        z.object({
+          id: z.string().optional(),
+          nome: z.string().optional(),
+          whatsapp: z.string().optional(),
+        })
+      )
+      .query(async ({ input }) => {
+        const params = new URLSearchParams();
+        if (input.id) params.set("id", input.id);
+        if (input.nome) params.set("nome", input.nome);
+        if (input.whatsapp) params.set("whatsapp", input.whatsapp);
+
+        const response = await fetch(
+          `${PUBLIC_API_BASE}/direcionamentos/pendentes?${params.toString()}`,
+          { headers: { "Content-Type": "application/json" } }
+        );
+
+        const data = await response.json().catch(() => []);
+
+        if (!response.ok) {
+          throw new Error(
+            (data as any)?.message ||
+            (data as any)?.erro ||
+            `Erro ao buscar direcionamentos (${response.status})`
+          );
+        }
+
+        return Array.isArray(data) ? data : data ? [data] : [];
+      }),
+
     submit: publicProcedure
       .input(
         z.object({

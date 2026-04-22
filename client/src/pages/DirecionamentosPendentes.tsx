@@ -5,12 +5,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Loader2, RotateCcw, CheckCircle2, AlertCircle } from 'lucide-react';
-import {
-  type DirecPendente,
-  type DirecStatus,
-  buscarDirecionamentosPendentes,
-  atualizarDirecionamento,
-} from '@/lib/direcionamentosApi';
+import { trpc } from '@/lib/trpc';
+import type { DirecPendente, DirecStatus } from '@/lib/direcionamentosApi';
 
 // ─── Estilos de badge por status ──────────────────────────────────────────────
 
@@ -73,41 +69,56 @@ const formatDate = (iso?: string) => {
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function DirecionamentosPendentes() {
-  const [loading, setLoading]     = useState(true);
-  const [erro, setErro]           = useState<string | null>(null);
+  const [erro, setErro]             = useState<string | null>(null);
   const [resultados, setResultados] = useState<DirecPendente[]>([]);
-  const [wizards, setWizards]     = useState<Record<string, WizardState>>({});
+  const [wizards, setWizards]       = useState<Record<string, WizardState>>({});
+  const [filtros, setFiltros]       = useState<{ id?: string; nome?: string; whatsapp?: string } | null>(null);
 
-  // ── Lê params da URL e busca ao montar ──
+  const atualizarStatus = trpc.direcionamentos.atualizarStatus.useMutation();
+
+  const busca = trpc.direcionamentos.buscarPendentes.useQuery(filtros ?? {}, {
+    enabled: filtros !== null,
+    retry: false,
+  });
+
+  // ── Lê params da URL ao montar ──
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params   = new URLSearchParams(window.location.search);
     const id       = params.get('id')?.trim();
     const nome     = params.get('nome')?.trim();
     const whatsapp = params.get('whatsapp')?.replace(/\D/g, '').trim();
 
     if (!id && !nome && !whatsapp) {
       setErro('Link inválido. Nenhum filtro de identificação foi fornecido.');
-      setLoading(false);
       return;
     }
 
-    buscarDirecionamentosPendentes({
+    setFiltros({
       id: id || undefined,
       nome: nome || undefined,
       whatsapp: whatsapp || undefined,
-    })
-      .then(data => {
-        setResultados(data);
-        const initial: Record<string, WizardState> = {};
-        data.forEach(item => { initial[item.id] = makeInitialWizard(item.status); });
-        setWizards(initial);
-      })
-      .catch(err => {
-        setErro(err?.response?.data?.message || err?.message || 'Erro ao carregar os dados.');
-      })
-      .finally(() => setLoading(false));
+    });
   }, []);
+
+  // ── Atualiza resultados quando a query retorna ──
+
+  useEffect(() => {
+    if (!busca.data) return;
+    const data = busca.data as DirecPendente[];
+    setResultados(data);
+    const initial: Record<string, WizardState> = {};
+    data.forEach(item => { initial[item.id] = makeInitialWizard(item.status); });
+    setWizards(initial);
+  }, [busca.data]);
+
+  useEffect(() => {
+    if (busca.error) {
+      setErro(busca.error.message || 'Erro ao carregar os dados.');
+    }
+  }, [busca.error]);
+
+  const loading = busca.isFetching;
 
   // ── Wizard helpers ──
 
@@ -158,17 +169,20 @@ export default function DirecionamentosPendentes() {
 
     setWizard(item.id, { saving: true });
     try {
-      const updated = await atualizarDirecionamento(item.id, {
+      const updated = await atualizarStatus.mutateAsync({
+        id: item.id,
         status: wiz.resolvedStatus,
         motivo: wiz.motivo.trim() || undefined,
       });
+      const novoStatus = (updated as any)?.status ?? wiz.resolvedStatus;
+      const novoMotivo = (updated as any)?.motivo ?? wiz.motivo;
       setResultados(prev =>
-        prev.map(r => r.id === item.id ? { ...r, status: updated.status, motivo: updated.motivo } : r)
+        prev.map(r => r.id === item.id ? { ...r, status: novoStatus, motivo: novoMotivo } : r)
       );
-      setWizards(prev => ({ ...prev, [item.id]: makeInitialWizard(updated.status) }));
+      setWizards(prev => ({ ...prev, [item.id]: makeInitialWizard(novoStatus) }));
       toast.success('Acompanhamento atualizado com sucesso!');
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || err?.message || 'Erro ao atualizar.');
+      toast.error(err?.message || 'Erro ao atualizar.');
       setWizard(item.id, { saving: false });
     }
   };
