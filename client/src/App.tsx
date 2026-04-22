@@ -14,6 +14,7 @@ const PixConfirmation = lazy(() => import("./pages/PixConfirmation"));
 const Ticket = lazy(() => import("./pages/Ticket"));
 const AtualizarCelula = lazy(() => import("./pages/AtualizarCelula"));
 const LiderCelula = lazy(() => import("./pages/LiderCelula"));
+const DirecionamentosPendentes = lazy(() => import("./pages/DirecionamentosPendentes"));
 const Links = lazy(() => import("./pages/Links"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -39,6 +40,7 @@ function Router() {
         <Route path={"/ticket/:orderCode"} component={Ticket} />
         <Route path={"/celulas/atualizar"} component={AtualizarCelula} />
         <Route path={"/celulas/lider"} component={LiderCelula} />
+        <Route path={"/direcionamentos/pendentes"} component={DirecionamentosPendentes} />
         <Route path={"/links"} component={Links} />
         <Route path={"/404"} component={NotFound} />
         {/* Final fallback route */}
