@@ -117,7 +117,7 @@ export default function DiarioBordo() {
               <h2 className="text-lg font-bold text-amber-900">E-mail não encontrado</h2>
               <p className="text-sm text-amber-800 max-w-sm mx-auto leading-relaxed">
                 O e-mail <span className="font-semibold">{emailAtivo}</span> não está cadastrado no Diário de Bordo.
-                Verifique se digitou corretamente ou entre em contato com a equipe START.
+                Verifique se digitou corretamente ou entre em contato com a Mestre Mirtes.
               </p>
               <p className="text-xs text-amber-600">
                 Os desafios abaixo são os ativos no diário — suas respostas serão vinculadas ao e-mail informado.
@@ -126,7 +126,7 @@ export default function DiarioBordo() {
           )}
 
           {/* Conteúdo após carregar */}
-          {carregou && (
+          {carregou && !semCadastro && (
             <Tabs defaultValue="pendentes" className="space-y-4">
               <TabsList className="w-full grid grid-cols-2">
                 <TabsTrigger value="pendentes" className="gap-2">
