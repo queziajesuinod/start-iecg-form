@@ -60,8 +60,17 @@ export default function DiarioBordo() {
     }
   };
 
-  const onRespondido = (challengeId: string) => {
-    setPendentes(prev => prev?.filter(c => c.id !== challengeId) ?? prev);
+  const recarregar = async (emailParam: string) => {
+    const [pend, resp] = await Promise.all([
+      fetchPendentes(emailParam),
+      fetchRespostas(emailParam),
+    ]);
+    setPendentes(pend);
+    setRespostas(resp);
+  };
+
+  const onRespondido = () => {
+    recarregar(emailAtivo);
   };
 
   const carregou = pendentes !== null && respostas !== null;
@@ -221,7 +230,7 @@ function ChallengeCard({
 }: {
   challenge: Challenge;
   email: string;
-  onRespondido: (id: string) => void;
+  onRespondido: () => void;
 }) {
   const [resposta, setResposta]   = useState(challenge.userSubmission?.responseText ?? '');
   const [opcaoSel, setOpcaoSel]   = useState('');
@@ -242,7 +251,7 @@ function ChallengeCard({
     try {
       await submitResposta(email, challenge.id, texto);
       toast.success('Resposta enviada! Aguardando aprovação.');
-      onRespondido(challenge.id);
+      onRespondido();
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao enviar resposta.');
     } finally {
