@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { HtmlEditor } from '@/components/HtmlEditor';
 import { toast } from 'sonner';
-import { Loader2, CheckCircle2, Clock, Star, BookOpen, Send, AlertTriangle } from 'lucide-react';
+import { Loader2, CheckCircle2, Clock, Star, BookOpen, Send } from 'lucide-react';
 import {
   fetchRespostas,
   fetchPendentes,
@@ -75,12 +75,6 @@ export default function DiarioBordo() {
 
   const carregou = pendentes !== null && respostas !== null;
 
-  // Usuário não cadastrado: sem respostas aprovadas e nenhum desafio com submissão
-  const semCadastro =
-    carregou &&
-    respostas.length === 0 &&
-    pendentes.every(c => !c.userSubmission);
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
       <div className="container py-10">
@@ -115,27 +109,8 @@ export default function DiarioBordo() {
             </form>
           </Card>
 
-          {/* Banner: e-mail não cadastrado */}
-          {semCadastro && (
-            <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 px-6 py-8 text-center shadow-md space-y-3">
-              <div className="flex justify-center">
-                <span className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 border-2 border-amber-300">
-                  <AlertTriangle className="h-7 w-7 text-amber-500" />
-                </span>
-              </div>
-              <h2 className="text-lg font-bold text-amber-900">E-mail não encontrado</h2>
-              <p className="text-sm text-amber-800 max-w-sm mx-auto leading-relaxed">
-                O e-mail <span className="font-semibold">{emailAtivo}</span> não está cadastrado no Diário de Bordo.
-                Verifique se digitou corretamente ou entre em contato com a Mestre Mirtes.
-              </p>
-              <p className="text-xs text-amber-600">
-                Os desafios abaixo são os ativos no diário — suas respostas serão vinculadas ao e-mail informado.
-              </p>
-            </div>
-          )}
-
           {/* Conteúdo após carregar */}
-          {carregou && !semCadastro && (
+          {carregou && (
             <Tabs defaultValue="pendentes" className="space-y-4">
               <TabsList className="w-full grid grid-cols-2">
                 <TabsTrigger value="pendentes" className="gap-2">
