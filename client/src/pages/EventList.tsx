@@ -150,10 +150,10 @@ export default function EventList() {
       <div className="container max-w-6xl mx-auto">
         <div className="text-center mb-12">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-            Eventos Disponiveis
+            Eventos Disponíveis
           </h1>
           <p className="text-lg text-gray-600">
-            Escolha um evento e faca sua inscricao
+            Escolha um evento e faça sua inscrição
           </p>
         </div>
 

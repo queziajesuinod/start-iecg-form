@@ -410,7 +410,7 @@ export default function AtualizarCelula() {
     try {
       const result = await buscarCelula.refetch();
       if (result.error) {
-        toast.error(result.error.message || "Nao foi possivel localizar a célula.");
+        toast.error(result.error.message || "Não foi possível localizar a célula.");
         return;
       }
       const celulas = buildCelulaList(result.data?.data);

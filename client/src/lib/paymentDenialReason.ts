@@ -1,17 +1,17 @@
 const CIELO_RETURN_CODE_REASON: Record<string, string> = {
-  '05': 'Transacao nao autorizada (generica). Contate o banco emissor',
-  '14': 'Numero do cartao invalido',
+  '05': 'Transação não autorizada (genérica). Contate o banco emissor',
+  '14': 'Número do cartão inválido',
   '51': 'Saldo ou limite insuficiente',
-  '57': 'Transacao nao permitida para o cartao',
-  '61': 'Valor excedido para a operacao',
-  '78': 'Cartao novo sem desbloqueio',
-  '82': 'Transacao nao autorizada devido a regra do emissor',
-  '83': 'Transacao suspeita de fraude pelo banco emissor',
+  '57': 'Transação não permitida para o cartão',
+  '61': 'Valor excedido para a operação',
+  '78': 'Cartão novo sem desbloqueio',
+  '82': 'Transação não autorizada devido à regra do emissor',
+  '83': 'Transação suspeita de fraude pelo banco emissor',
   '91': 'Emissor fora do ar',
-  '96': 'Falha de sistema/comunicacao com o emissor',
+  '96': 'Falha de sistema/comunicação com o emissor',
   '5C': 'Bloqueio preventivo antifraude do banco do cliente',
-  AI: 'Autenticacao nao foi realizada pelo portador',
-  N7: 'Violacao de seguranca (CVV invalido ou nao informado)',
+  AI: 'Autenticação não foi realizada pelo portador',
+  N7: 'Violação de segurança (CVV inválido ou não informado)',
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -72,11 +72,11 @@ export const getCieloDeniedMessage = (registration: unknown): string | undefined
   const returnMessage = extractCieloReturnMessage(registration);
 
   if (mappedReason && code) {
-    return `Pagamento negado. ${mappedReason} (codigo ${code}).`;
+    return `Pagamento negado. ${mappedReason} (código ${code}).`;
   }
 
   if (returnMessage && code) {
-    return `Pagamento negado. ${returnMessage} (codigo ${code}).`;
+    return `Pagamento negado. ${returnMessage} (código ${code}).`;
   }
 
   if (mappedReason) {

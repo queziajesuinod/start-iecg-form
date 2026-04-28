@@ -319,18 +319,18 @@ export default function EventDetails() {
           denialMessageFromReturnCode ||
           getMessageFromPayload(registration) ||
           payload.message ||
-          'Nao autorizado a compra pelo cartao de credito.';
+          'Não autorizado a compra pelo cartão de crédito.';
         showPaymentStatusToast(status, backendMessage);
         setCardDeniedMessage(backendMessage);
         setCardDeniedModalOpen(true);
         return;
       }
 
-      toast.info('Pagamento em analise. Acompanhe o status da inscricao.');
+      toast.info('Pagamento em análise. Acompanhe o status da inscrição.');
       setLocation(`/inscricao/${orderCode}`);
     } catch (error) {
-      console.error('Erro ao verificar pagamento do cartao:', error);
-      toast.error('Nao foi possivel validar o status do pagamento.');
+      console.error('Erro ao verificar pagamento do cartão:', error);
+      toast.error('Não foi possível validar o status do pagamento.');
     }
   };
 
@@ -588,24 +588,24 @@ export default function EventDetails() {
     if (requiresPayment && formaSelecionada?.paymentType === 'credit_card') {
       if (!dadosPagamento.cardNumber || !dadosPagamento.cardHolder || 
           !dadosPagamento.expirationDate || !dadosPagamento.securityCode) {
-        toast.error('Preencha todos os dados do cartao');
+        toast.error('Preencha todos os dados do cartão');
         return false;
       }
 
       const cardDigits = removeNonDigits(dadosPagamento.cardNumber || '');
       if (cardDigits.length < 13 || cardDigits.length > 19) {
-        toast.error('Numero do cartao invalido');
+        toast.error('Número do cartão inválido');
         return false;
       }
 
       if (!isCardExpiryValid(dadosPagamento.expirationDate || '')) {
-        toast.error('Validade do cartao invalida. Use o formato MM/AAAA');
+        toast.error('Validade do cartão inválida. Use o formato MM/AAAA');
         return false;
       }
 
       const cvvDigits = removeNonDigits(dadosPagamento.securityCode || '');
       if (cvvDigits.length < 3 || cvvDigits.length > 4) {
-        toast.error('CVV invalido');
+        toast.error('CVV inválido');
         return false;
       }
     }
@@ -615,6 +615,10 @@ export default function EventDetails() {
       const valor = parseValorPagamento();
       if (!valor || valor <= 0) {
         toast.error('Informe o valor do sinal ou pagamento inicial');
+        return false;
+      }
+      if (minimoSinal > 0 && valor < minimoSinal) {
+        toast.error(`O valor do sinal deve ser de pelo menos R$ ${minimoSinal.toFixed(2)}`);
         return false;
       }
       if (valor > total) {
@@ -740,7 +744,7 @@ export default function EventDetails() {
       const resultadoMessage =
         getMessageFromPayload(resultado) ||
         getMessageFromPayload((resultado as { message?: unknown }).message) ||
-        'Nao foi possivel concluir a inscricao.';
+        'Não foi possível concluir a inscrição.';
       toast.error(resultadoMessage);
     }
   } catch (error: unknown) {
@@ -940,6 +944,15 @@ export default function EventDetails() {
     evento?.registrationPaymentMode === 'BALANCE_DUE'
       ? Math.max(0, totalComTaxas - pagamentoAgora)
       : 0;
+  const minimoSinal = evento?.depositAmount ?? 0;
+  const sinaValido =
+    minimoSinal <= 0 ||
+    valorPagamentoNumero <= 0 ||
+    valorPagamentoNumero >= minimoSinal;
+  // Em BALANCE_DUE + crédito, as parcelas incidem sobre o sinal, não o total
+  const isBalanceDue = evento?.registrationPaymentMode === 'BALANCE_DUE';
+  const baseParcelamento =
+    isBalanceDue && pagamentoAgora > 0 ? pagamentoAgora : totalComTaxas;
   const cardNumberDisplay = dadosPagamento.cardNumber?.trim() || '•••• •••• •••• ••••';
   const cardHolderDisplay = dadosPagamento.cardHolder?.trim() || 'NOME COMPLETO';
   const cardExpDisplay = dadosPagamento.expirationDate?.trim() || 'MM/AAAA';
@@ -964,6 +977,11 @@ export default function EventDetails() {
       setParcelas(1);
     }
   }, [formaPagamento, selectedPaymentOption, parcelas]);
+
+  // Ao trocar a forma de pagamento, recalcula o sinal sugerido
+  useEffect(() => {
+    setValorPagamentoEditado(false);
+  }, [formaPagamento]);
   useEffect(() => {
     if (evento?.registrationPaymentMode !== 'BALANCE_DUE') {
       if (valorPagamento !== '') {
@@ -992,6 +1010,7 @@ export default function EventDetails() {
     totalComTaxas,
     valorPagamento,
     valorPagamentoEditado,
+    formaPagamento,
   ]);
 
   if (loadingEvent) {
@@ -1301,7 +1320,7 @@ export default function EventDetails() {
                 </div>
                 {formaPagamento && parcelas > 1 && (
                   <div className="text-sm text-muted-foreground">
-                    Parcelado em {parcelas}x de R$ {(totalComTaxas / parcelas).toFixed(2)}
+                    Parcelado em {parcelas}x de R$ {(baseParcelamento / parcelas).toFixed(2)}
                   </div>
                 )}
               </div>
@@ -1360,7 +1379,7 @@ export default function EventDetails() {
                       <Input
                         id="valor-pagamento"
                         type="number"
-                        min="0"
+                        min={minimoSinal > 0 ? minimoSinal : 0}
                         step="0.01"
                         max={totalComTaxas}
                         value={valorPagamento}
@@ -1369,11 +1388,48 @@ export default function EventDetails() {
                           setValorPagamentoEditado(true);
                         }}
                         placeholder="0,00"
+                        className={!sinaValido ? 'border-red-400 focus-visible:ring-red-400' : ''}
                       />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Você pode pagar apenas um sinal agora e quitar o restante depois.
-                      </p>
+                      {minimoSinal > 0 && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Valor mínimo do sinal: <span className="font-semibold">R$ {minimoSinal.toFixed(2)}</span>
+                        </p>
+                      )}
+                      {!sinaValido && (
+                        <p className="text-xs text-red-500 mt-1">
+                          O valor informado é menor que o mínimo exigido (R$ {minimoSinal.toFixed(2)})
+                        </p>
+                      )}
+                      {sinaValido && minimoSinal <= 0 && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Você pode pagar apenas um sinal agora e quitar o restante depois.
+                        </p>
+                      )}
                     </div>
+                    {/* Preview de parcelas do sinal quando crédito selecionado */}
+                    {selectedPaymentOption?.paymentType === 'credit_card' && pagamentoAgora > 0 && (
+                      <div className="rounded-md bg-white border border-blue-200 px-3 py-2 text-sm text-blue-800 space-y-0.5">
+                        <p className="font-medium text-xs text-blue-500 uppercase tracking-wide">Sinal no cartão</p>
+                        {Array.from({ length: selectedPaymentOption.maxInstallments || 1 }, (_, i) => i + 1)
+                          .slice(0, 4)
+                          .map(p => {
+                            const base = applyInstallmentInterest(pagamentoAgora, selectedPaymentOption, p);
+                            const regraParcela = getInstallmentInterestRule(selectedPaymentOption, p);
+                            const temTaxa = regraParcela.interestRate > 0 && p > 1;
+                            return (
+                              <p key={p} className={`text-xs ${p === parcelas ? 'font-semibold text-blue-700' : 'text-blue-600'}`}>
+                                {p}x de R$ {(base / p).toFixed(2)}
+                                {temTaxa ? ` (${formatInstallmentInterest(regraParcela)})` : ' sem taxas'}
+                                {p === parcelas ? ' ← selecionado' : ''}
+                              </p>
+                            );
+                          })}
+                        {(selectedPaymentOption.maxInstallments || 1) > 4 && (
+                          <p className="text-xs text-blue-400">+ outras opções no seletor abaixo</p>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap gap-2">
                       {evento?.depositAmount && (
                         <Button
@@ -1415,8 +1471,10 @@ export default function EventDetails() {
                           (_, i) => i + 1
                         ).map((p) => {
                           const pagamento = selectedPaymentOption;
-                          const totalParcelado = calcularValorTotal(p);
-                          const valorParcela = totalParcelado / p;
+                          const base = isBalanceDue && pagamentoAgora > 0
+                            ? applyInstallmentInterest(pagamentoAgora, pagamento, p)
+                            : calcularValorTotal(p);
+                          const valorParcela = base / p;
                           const regraParcela = getInstallmentInterestRule(pagamento, p);
                           const semTaxas = !pagamento || regraParcela.interestRate <= 0 || p === 1;
                           return (
@@ -1431,14 +1489,14 @@ export default function EventDetails() {
                   </div>
                 )}
                 
-                {/* Dados do Cartao (apenas para cartao) */}
+                {/* Dados do Cartão (apenas para cartão) */}
                 {formaPagamento && selectedPaymentOption?.paymentType === 'credit_card' && (
                   <div className="space-y-4 pt-4 border-t">
-                    <h4 className="font-medium">Dados do Cartao</h4>
+                    <h4 className="font-medium">Dados do Cartão</h4>
                     <div className="grid gap-6 md:grid-cols-[1fr,360px] md:items-start">
                       <div className="space-y-4">
                         <div>
-                          <Label>Numero do Cartao</Label>
+                          <Label>Número do Cartão</Label>
                           <Input
                             placeholder="0000 0000 0000 0000"
                             value={dadosPagamento.cardNumber}
@@ -1451,7 +1509,7 @@ export default function EventDetails() {
                           />
                         </div>
                         <div>
-                          <Label>Nome no Cartao</Label>
+                          <Label>Nome no Cartão</Label>
                           <Input
                             placeholder="NOME COMPLETO"
                             value={dadosPagamento.cardHolder}
@@ -1566,7 +1624,7 @@ export default function EventDetails() {
             <DialogHeader>
               <DialogTitle>Pagamento não autorizado</DialogTitle>
               <DialogDescription>
-                {cardDeniedMessage || 'Nao foi possivel autorizar a compra pelo cartao de crédito.'}
+                {cardDeniedMessage || 'Não foi possível autorizar a compra pelo cartão de crédito.'}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>

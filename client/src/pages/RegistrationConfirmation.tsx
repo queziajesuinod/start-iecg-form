@@ -35,8 +35,8 @@ export default function RegistrationConfirmation() {
         iniciarPolling();
       }
     } catch (error) {
-      console.error('Erro ao carregar inscricao:', error);
-      toast.error('Erro ao carregar dados da inscricao');
+      console.error('Erro ao carregar inscrição:', error);
+      toast.error('Erro ao carregar dados da inscrição');
     } finally {
       setLoading(false);
     }
@@ -71,7 +71,7 @@ export default function RegistrationConfirmation() {
   const copiarPixCode = () => {
     if (registration?.pixQrCode) {
       navigator.clipboard.writeText(registration.pixQrCode);
-      toast.success('Codigo PIX copiado!');
+      toast.success('Código PIX copiado!');
     }
   };
 
@@ -88,7 +88,7 @@ export default function RegistrationConfirmation() {
       <div className="container mx-auto p-6">
         <Card>
           <CardHeader>
-            <CardTitle>Inscricao nao encontrada</CardTitle>
+            <CardTitle>Inscrição não encontrada</CardTitle>
           </CardHeader>
           <CardContent>
             <Button onClick={() => setLocation('/eventos')}>Voltar para Eventos</Button>
@@ -119,13 +119,13 @@ export default function RegistrationConfirmation() {
             )}
             <CardTitle>
               {isConfirmed
-                ? 'Inscricao Confirmada!'
+                ? 'Inscrição Confirmada!'
                 : isDenied
-                  ? 'Pagamento nao autorizado'
+                  ? 'Pagamento não autorizado'
                   : 'Aguardando Pagamento'}
             </CardTitle>
           </div>
-          <CardDescription>Codigo do pedido: {registration.orderCode}</CardDescription>
+          <CardDescription>Código do pedido: {registration.orderCode}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
@@ -165,7 +165,7 @@ export default function RegistrationConfirmation() {
 
                 {registration.pixQrCode && (
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Ou copie o codigo PIX:</label>
+                    <label className="text-sm font-medium">Ou copie o código PIX:</label>
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -184,7 +184,7 @@ export default function RegistrationConfirmation() {
                   <div className="mt-4 p-4 bg-blue-50 rounded-lg flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     <span className="text-sm text-blue-900">
-                      Aguardando confirmacao do pagamento...
+                      Aguardando confirmação do pagamento...
                     </span>
                   </div>
                 )}
@@ -197,7 +197,7 @@ export default function RegistrationConfirmation() {
               <div className="p-4 bg-green-50 rounded-lg">
                 <p className="text-green-900 font-medium">Pagamento aprovado!</p>
                 <p className="text-sm text-green-700 mt-1">
-                  Voce recebera um e-mail com os detalhes da sua inscricao.
+                  Você receberá um e-mail com os detalhes da sua inscrição.
                 </p>
               </div>
             </div>
@@ -206,7 +206,7 @@ export default function RegistrationConfirmation() {
           {isDenied && (
             <div className="border-t pt-6">
               <div className="p-4 bg-red-50 rounded-lg">
-                <p className="text-red-900 font-medium">Pagamento nao autorizado.</p>
+                <p className="text-red-900 font-medium">Pagamento não autorizado.</p>
                 <p className="text-sm text-red-700 mt-1">
                   {deniedReasonMessage || 'Revise os dados de pagamento e tente novamente.'}
                 </p>
