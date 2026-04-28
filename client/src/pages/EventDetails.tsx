@@ -536,15 +536,19 @@ export default function EventDetails() {
   };
 
   const calcularValorTotal = (installments = parcelas) => {
-    // Somar preco de cada inscrito baseado no seu lote especifico
     const subtotal = calcularSubtotal();
     if (subtotal === 0) return 0;
 
     const totalSemTaxas = subtotal - calcularDesconto(subtotal);
     let total = totalSemTaxas;
 
-    // Aplicar juros conforme a regra da parcela selecionada.
-    if (formaPagamento && installments > 1) {
+    // Em BALANCE_DUE os juros incidem apenas sobre o sinal, não sobre o total do evento.
+    // Fora do BALANCE_DUE, aplica juros normalmente sobre o total.
+    if (
+      formaPagamento &&
+      installments > 1 &&
+      evento?.registrationPaymentMode !== 'BALANCE_DUE'
+    ) {
       const pagamento = findPaymentOption(formaPagamento);
       total = applyInstallmentInterest(totalSemTaxas, pagamento, installments);
     }
@@ -949,10 +953,19 @@ export default function EventDetails() {
     minimoSinal <= 0 ||
     valorPagamentoNumero <= 0 ||
     valorPagamentoNumero >= minimoSinal;
-  // Em BALANCE_DUE + crédito, as parcelas incidem sobre o sinal, não o total
   const isBalanceDue = evento?.registrationPaymentMode === 'BALANCE_DUE';
-  const baseParcelamento =
-    isBalanceDue && pagamentoAgora > 0 ? pagamentoAgora : totalComTaxas;
+  // Em BALANCE_DUE + crédito parcelado: juros sobre o sinal; fora disso: totalComTaxas já tem juros
+  const baseParcelamento = (() => {
+    if (!isBalanceDue) return totalComTaxas;
+    if (
+      selectedPaymentOption?.paymentType === 'credit_card' &&
+      pagamentoAgora > 0 &&
+      parcelas > 1
+    ) {
+      return applyInstallmentInterest(pagamentoAgora, selectedPaymentOption, parcelas);
+    }
+    return pagamentoAgora;
+  })();
   const cardNumberDisplay = dadosPagamento.cardNumber?.trim() || '•••• •••• •••• ••••';
   const cardHolderDisplay = dadosPagamento.cardHolder?.trim() || 'NOME COMPLETO';
   const cardExpDisplay = dadosPagamento.expirationDate?.trim() || 'MM/AAAA';
@@ -1315,10 +1328,37 @@ export default function EventDetails() {
                 )}
                 <Separator />
                 <div className="flex justify-between font-bold text-lg">
-                  <span>Total:</span>
+                  <span>Total do evento:</span>
                   <span>R$ {totalComTaxas.toFixed(2)}</span>
                 </div>
-                {formaPagamento && parcelas > 1 && (
+
+                {/* Detalhamento BALANCE_DUE */}
+                {isBalanceDue && pagamentoAgora > 0 && (
+                  <>
+                    <div className="flex justify-between text-sm text-blue-700 font-medium">
+                      <span>Pagamento agora (sinal):</span>
+                      <span>R$ {pagamentoAgora.toFixed(2)}</span>
+                    </div>
+                    {saldoEstimado > 0 && (
+                      <div className="flex justify-between text-sm text-slate-500">
+                        <span>Saldo restante:</span>
+                        <span>R$ {saldoEstimado.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {selectedPaymentOption?.paymentType === 'credit_card' && parcelas > 1 && (
+                      <div className="text-sm text-muted-foreground">
+                        Sinal parcelado em {parcelas}x de R$ {(baseParcelamento / parcelas).toFixed(2)}
+                        {(() => {
+                          const regra = getInstallmentInterestRule(selectedPaymentOption, parcelas);
+                          return regra.interestRate > 0 ? ` (${formatInstallmentInterest(regra)})` : ' sem taxas';
+                        })()}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Parcelamento fora de BALANCE_DUE */}
+                {!isBalanceDue && formaPagamento && parcelas > 1 && (
                   <div className="text-sm text-muted-foreground">
                     Parcelado em {parcelas}x de R$ {(baseParcelamento / parcelas).toFixed(2)}
                   </div>
@@ -1594,8 +1634,8 @@ export default function EventDetails() {
                   <div className="p-4 bg-blue-50 rounded-lg">
                     <p className="text-sm text-blue-900">
                       {selectedPaymentOption?.paymentType === 'pix'
-                        ? 'Apos finalizar a inscrição, voce recebera o QR Code do PIX para pagamento.'
-                        : 'Apos finalizar a inscrição, voce recebera o boleto para pagamento.'}
+                        ? 'Após finalizar a inscrição, você receberá o QR Code do PIX para pagamento.'
+                        : 'Após finalizar a inscrição, você receberá o boleto para pagamento.'}
                     </p>
                   </div>
                 )}
@@ -1608,7 +1648,7 @@ export default function EventDetails() {
           {/* Botao de Envio */}
           <Button type="submit" size="lg" className="w-full" disabled={submitting || paymentUnavailableEffective}>
             {paymentUnavailableEffective ? (
-              !hasLotAvailable ? 'ENCERRADO' : 'Forma de pagamento indisponivel'
+              !hasLotAvailable ? 'ENCERRADO' : 'Forma de pagamento indisponível'
             ) : submitting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
