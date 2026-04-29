@@ -22,17 +22,26 @@ const statusBadge = (status?: string) =>
 
 // ─── Tipos do wizard ──────────────────────────────────────────────────────────
 
-type WizardStep = 'q_retorno' | 'q_feedback' | 'q_foi_celula' | 'confirmar';
+type WizardStep =
+  | 'q_retorno'           // primeiro contato: a pessoa retornou o contato?
+  | 'q_manteve_contato'   // em consolidação: manteve o contato?
+  | 'q_convite_celula'    // fez o convite para a célula?
+  | 'q_aceitou_convite'   // aceitou ou deu negativa ao convite?
+  | 'q_foi_celula'        // já foi à célula?
+  | 'q_vai_ficar'         // decidiu continuar na célula?
+  | 'confirmar';
 
 type WizardState = {
   step: WizardStep;
+  history: WizardStep[];
   resolvedStatus: DirecStatus | null;
   motivo: string;
   saving: boolean;
 };
 
 const makeInitialWizard = (status?: string): WizardState => ({
-  step: status === 'EM_CONSOLIDACAO' ? 'q_feedback' : 'q_retorno',
+  step: status === 'EM_CONSOLIDACAO' ? 'q_manteve_contato' : 'q_retorno',
+  history: [],
   resolvedStatus: null,
   motivo: '',
   saving: false,
@@ -81,8 +90,6 @@ export default function DirecionamentosPendentes() {
     retry: false,
   });
 
-  // ── Lê params da URL ao montar ──
-
   useEffect(() => {
     const params   = new URLSearchParams(window.location.search);
     const id       = params.get('id')?.trim();
@@ -94,14 +101,8 @@ export default function DirecionamentosPendentes() {
       return;
     }
 
-    setFiltros({
-      id: id || undefined,
-      nome: nome || undefined,
-      whatsapp: whatsapp || undefined,
-    });
+    setFiltros({ id: id || undefined, nome: nome || undefined, whatsapp: whatsapp || undefined });
   }, []);
-
-  // ── Atualiza resultados quando a query retorna ──
 
   useEffect(() => {
     if (!busca.data) return;
@@ -113,9 +114,7 @@ export default function DirecionamentosPendentes() {
   }, [busca.data]);
 
   useEffect(() => {
-    if (busca.error) {
-      setErro(busca.error.message || 'Erro ao carregar os dados.');
-    }
+    if (busca.error) setErro(busca.error.message || 'Erro ao carregar os dados.');
   }, [busca.error]);
 
   const loading = busca.isFetching;
@@ -128,37 +127,87 @@ export default function DirecionamentosPendentes() {
   const setWizard = (id: string, patch: Partial<WizardState>) =>
     setWizards(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }));
 
-  const resetWizard = (item: DirecPendente) =>
-    setWizards(prev => ({ ...prev, [item.id]: makeInitialWizard(item.status) }));
+  const goTo = (id: string, currentStep: WizardStep, nextStep: WizardStep, extras: Partial<WizardState> = {}) =>
+    setWizards(prev => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        step: nextStep,
+        history: [...(prev[id]?.history ?? []), currentStep],
+        ...extras,
+      },
+    }));
 
-  // ── Navegação do wizard ──
+  const resolve = (id: string, currentStep: WizardStep, status: DirecStatus, motivo: string) =>
+    goTo(id, currentStep, 'confirmar', { resolvedStatus: status, motivo });
 
-  const handleRetorno = (item: DirecPendente, tevRetorno: boolean) => {
-    if (!tevRetorno) {
-      setWizard(item.id, { step: 'confirmar', resolvedStatus: 'CONTATO_LIDER_SEM_RETORNO', motivo: '' });
-    } else {
-      setWizard(item.id, { step: 'q_foi_celula' });
-    }
-  };
-
-  const handleFeedback = (item: DirecPendente, tevFeedback: boolean) => {
-    if (!tevFeedback) {
-      setWizard(item.id, {
-        step: 'confirmar',
-        resolvedStatus: 'CONSOLIDACAO_INTERROMPIDA',
-        motivo: 'Não consolidado, não teve engajamento',
-      });
-    } else {
-      setWizard(item.id, { step: 'q_foi_celula' });
-    }
-  };
-
-  const handleFoiCelula = (item: DirecPendente, foi: boolean) => {
-    setWizard(item.id, {
-      step: 'confirmar',
-      resolvedStatus: foi ? 'CONSOLIDADO_CELULA' : 'EM_CONSOLIDACAO',
-      motivo: foi ? 'Foi na célula' : 'Ainda não foi à célula',
+  const goBack = (item: DirecPendente) => {
+    setWizards(prev => {
+      const wiz = prev[item.id];
+      if (!wiz || wiz.history.length === 0) return { ...prev, [item.id]: makeInitialWizard(item.status) };
+      const history = [...wiz.history];
+      const step = history.pop()!;
+      return { ...prev, [item.id]: { ...wiz, step, history, resolvedStatus: null, motivo: '' } };
     });
+  };
+
+  // ── Handlers de cada pergunta ──
+
+  // Cenário 2/3: primeiro contato — a pessoa retornou?
+  const handleRetorno = (item: DirecPendente, retornou: boolean) => {
+    if (!retornou) {
+      // Cenário 3: mandou msg, não teve retorno
+      resolve(item.id, 'q_retorno', 'CONTATO_LIDER_SEM_RETORNO', 'Líder enviou mensagem, sem retorno do apelo');
+    } else {
+      goTo(item.id, 'q_retorno', 'q_convite_celula');
+    }
+  };
+
+  // Cenário 1: em consolidação — manteve o contato?
+  const handleManteveCont = (item: DirecPendente, manteve: boolean) => {
+    if (!manteve) {
+      resolve(item.id, 'q_manteve_contato', 'CONTATO_LIDER_SEM_RETORNO', 'Perdeu o contato após o início da consolidação');
+    } else {
+      goTo(item.id, 'q_manteve_contato', 'q_foi_celula');
+    }
+  };
+
+  // Cenário 2: fez o convite para a célula?
+  const handleConviteCelula = (item: DirecPendente, fez: boolean) => {
+    if (!fez) {
+      // Teve contato mas ainda não convidou
+      resolve(item.id, 'q_convite_celula', 'EM_CONSOLIDACAO', 'Teve contato inicial, convite para a célula pendente');
+    } else {
+      goTo(item.id, 'q_convite_celula', 'q_aceitou_convite');
+    }
+  };
+
+  // Cenário 4: aceitou o convite ou deu negativa?
+  const handleAceitouConvite = (item: DirecPendente, aceitou: boolean) => {
+    if (!aceitou) {
+      // Cenário 4: não foi e deu negativa
+      resolve(item.id, 'q_aceitou_convite', 'CONSOLIDACAO_INTERROMPIDA', 'Recusou o convite para a célula');
+    } else {
+      goTo(item.id, 'q_aceitou_convite', 'q_foi_celula');
+    }
+  };
+
+  // Já foi à célula?
+  const handleFoiCelula = (item: DirecPendente, foi: boolean) => {
+    if (!foi) {
+      resolve(item.id, 'q_foi_celula', 'EM_CONSOLIDACAO', 'Aceitou o convite, aguardando a primeira ida à célula');
+    } else {
+      goTo(item.id, 'q_foi_celula', 'q_vai_ficar');
+    }
+  };
+
+  // Vai continuar/ficar na célula?
+  const handleVaiFicar = (item: DirecPendente, vai: boolean) => {
+    if (vai) {
+      resolve(item.id, 'q_vai_ficar', 'CONSOLIDADO_CELULA', 'Foi à célula e decidiu continuar');
+    } else {
+      resolve(item.id, 'q_vai_ficar', 'CONSOLIDACAO_INTERROMPIDA', 'Foi à célula mas não quer continuar');
+    }
   };
 
   // ── Salvar ──
@@ -199,14 +248,12 @@ export default function DirecionamentosPendentes() {
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Acompanhamento de Apelos</h1>
           </header>
 
-          {/* Carregando */}
           {loading && (
             <div className="flex justify-center py-16">
               <Loader2 className="h-8 w-8 animate-spin text-blue-400" />
             </div>
           )}
 
-          {/* Erro / link inválido */}
           {!loading && erro && (
             <Card className="p-6 text-center space-y-2 bg-white border-red-200">
               <AlertCircle className="mx-auto h-8 w-8 text-red-400" />
@@ -215,14 +262,12 @@ export default function DirecionamentosPendentes() {
             </Card>
           )}
 
-          {/* Sem direcionamentos */}
           {!loading && !erro && resultados.length === 0 && (
             <Card className="p-6 text-center text-slate-500 bg-white">
               Nenhum apelo pendente encontrado para o seu contato.
             </Card>
           )}
 
-          {/* Cards dos direcionamentos */}
           {!loading && resultados.map(item => {
             const badge = statusBadge(item.status);
             const wiz   = getWizard(item);
@@ -230,7 +275,6 @@ export default function DirecionamentosPendentes() {
             return (
               <Card key={item.id} className="shadow-md border border-slate-200 bg-white overflow-hidden">
 
-                {/* Cabeçalho do apelo */}
                 <div className="px-6 py-5 space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -266,17 +310,20 @@ export default function DirecionamentosPendentes() {
                   <p className="text-xs text-slate-400">Cadastrado em {formatDate(item.createdAt)}</p>
                 </div>
 
-                {/* Wizard */}
                 <div className="border-t border-slate-100 px-6 py-5">
                   <WizardAcompanhamento
-                    item={item}
                     wiz={wiz}
+                    isEmConsolidacao={item.status === 'EM_CONSOLIDACAO'}
+                    onManteveCont={sim => handleManteveCont(item, sim)}
                     onRetorno={sim => handleRetorno(item, sim)}
-                    onFeedback={sim => handleFeedback(item, sim)}
+                    onConviteCelula={fez => handleConviteCelula(item, fez)}
+                    onAceitouConvite={aceitou => handleAceitouConvite(item, aceitou)}
                     onFoiCelula={foi => handleFoiCelula(item, foi)}
+                    onVaiFicar={vai => handleVaiFicar(item, vai)}
                     onMotivoChange={motivo => setWizard(item.id, { motivo })}
                     onSalvar={() => handleSalvar(item)}
-                    onReset={() => resetWizard(item)}
+                    onBack={() => goBack(item)}
+                    onReset={() => setWizards(prev => ({ ...prev, [item.id]: makeInitialWizard(item.status) }))}
                   />
                 </div>
 
@@ -293,24 +340,42 @@ export default function DirecionamentosPendentes() {
 // ─── Wizard ───────────────────────────────────────────────────────────────────
 
 interface WizardProps {
-  item: DirecPendente;
   wiz: WizardState;
+  isEmConsolidacao: boolean;
+  onManteveCont: (sim: boolean) => void;
   onRetorno: (sim: boolean) => void;
-  onFeedback: (sim: boolean) => void;
+  onConviteCelula: (fez: boolean) => void;
+  onAceitouConvite: (aceitou: boolean) => void;
   onFoiCelula: (foi: boolean) => void;
+  onVaiFicar: (vai: boolean) => void;
   onMotivoChange: (v: string) => void;
   onSalvar: () => void;
+  onBack: () => void;
   onReset: () => void;
 }
 
-function WizardAcompanhamento({ item, wiz, onRetorno, onFeedback, onFoiCelula, onMotivoChange, onSalvar, onReset }: WizardProps) {
+function WizardAcompanhamento({
+  wiz, isEmConsolidacao,
+  onManteveCont, onRetorno, onConviteCelula, onAceitouConvite,
+  onFoiCelula, onVaiFicar, onMotivoChange, onSalvar, onBack, onReset,
+}: WizardProps) {
+  const podeVoltar = wiz.history.length > 0;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-slate-700">Atualizar acompanhamento</p>
+        {podeVoltar && wiz.step !== 'confirmar' && (
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            <RotateCcw className="h-3 w-3" /> Voltar
+          </button>
+        )}
         {wiz.step === 'confirmar' && (
           <button
-            onClick={onReset}
+            onClick={onBack}
             className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 transition-colors"
           >
             <RotateCcw className="h-3 w-3" /> Voltar
@@ -318,31 +383,73 @@ function WizardAcompanhamento({ item, wiz, onRetorno, onFeedback, onFoiCelula, o
         )}
       </div>
 
+      {/* Cenário 1 — Em consolidação: manteve o contato? */}
+      {wiz.step === 'q_manteve_contato' && (
+        <Pergunta
+          texto="Manteve o contato desde o último registro?"
+          descricao="Essa pessoa já estava em acompanhamento — houve alguma conversa desde então?"
+          onSim={() => onManteveCont(true)}
+          onNao={() => onManteveCont(false)}
+          labelNao="Perdeu o contato"
+        />
+      )}
+
+      {/* Cenário 2/3 — Primeiro contato: a pessoa retornou? */}
       {wiz.step === 'q_retorno' && (
         <Pergunta
           texto="A pessoa retornou o contato?"
+          descricao="O líder fez contato — a pessoa respondeu ou está em conversa?"
           onSim={() => onRetorno(true)}
           onNao={() => onRetorno(false)}
           labelNao="Não respondeu"
         />
       )}
 
-      {wiz.step === 'q_feedback' && (
+      {/* Fez o convite para a célula? */}
+      {wiz.step === 'q_convite_celula' && (
         <Pergunta
-          texto="Houve algum retorno desde o último contato?"
-          descricao="Esse apelo já estava em acompanhamento — conseguiu avançar com essa pessoa?"
-          onSim={() => onFeedback(true)}
-          onNao={() => onFeedback(false)}
-          labelNao="Não houve retorno"
+          texto="Já fez o convite para a célula?"
+          descricao="Além do contato inicial, a pessoa já foi convidada a participar de uma célula?"
+          onSim={() => onConviteCelula(true)}
+          onNao={() => onConviteCelula(false)}
+          labelNao="Ainda não convidou"
         />
       )}
 
+      {/* Aceitou o convite ou deu negativa? */}
+      {wiz.step === 'q_aceitou_convite' && (
+        <Pergunta
+          texto="Como a pessoa respondeu ao convite?"
+          descricao="Ela demonstrou interesse em ir à célula ou recusou o convite?"
+          onSim={() => onAceitouConvite(true)}
+          onNao={() => onAceitouConvite(false)}
+          labelSim="Aceitou o convite"
+          labelNao="Deu negativa"
+        />
+      )}
+
+      {/* Já foi à célula? */}
       {wiz.step === 'q_foi_celula' && (
         <Pergunta
           texto="A pessoa já foi à célula?"
+          descricao={isEmConsolidacao
+            ? 'Desde o início do acompanhamento, ela chegou a ir à célula?'
+            : 'Ela aceitou o convite — já foi à célula alguma vez?'}
           onSim={() => onFoiCelula(true)}
           onNao={() => onFoiCelula(false)}
           labelNao="Ainda não foi"
+        />
+      )}
+
+      {/* Vai continuar/ficar na célula? */}
+      {wiz.step === 'q_vai_ficar' && (
+        <Pergunta
+          texto="A pessoa decidiu continuar na célula?"
+          descricao="Depois de ir à célula, ela demonstrou interesse em permanecer e participar regularmente?"
+          onSim={() => onVaiFicar(true)}
+          onNao={() => onVaiFicar(false)}
+          labelSim="Sim, quer ficar"
+          labelNao="Não quer continuar"
         />
       )}
 
@@ -359,13 +466,18 @@ function WizardAcompanhamento({ item, wiz, onRetorno, onFeedback, onFoiCelula, o
   );
 }
 
-// ─── Pergunta SIM / NÃO ───────────────────────────────────────────────────────
+// ─── Pergunta ─────────────────────────────────────────────────────────────────
 
 function Pergunta({
-  texto, descricao, onSim, onNao, labelNao = 'Não',
+  texto, descricao, onSim, onNao,
+  labelSim = 'Sim', labelNao = 'Não',
 }: {
-  texto: string; descricao?: string;
-  onSim: () => void; onNao: () => void; labelNao?: string;
+  texto: string;
+  descricao?: string;
+  onSim: () => void;
+  onNao: () => void;
+  labelSim?: string;
+  labelNao?: string;
 }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 space-y-3">
@@ -373,7 +485,7 @@ function Pergunta({
       {descricao && <p className="text-sm text-slate-500">{descricao}</p>}
       <div className="flex gap-3">
         <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={onSim}>
-          Sim
+          {labelSim}
         </Button>
         <Button variant="outline" className="flex-1 border-red-300 text-red-700 hover:bg-red-50" onClick={onNao}>
           {labelNao}
@@ -395,8 +507,11 @@ const STATUS_CONFIRM: Record<DirecStatus, { icon: string; cor: string; titulo: s
 function ConfirmarStep({
   resolvedStatus, motivo, saving, onMotivoChange, onSalvar,
 }: {
-  resolvedStatus: DirecStatus; motivo: string; saving: boolean;
-  onMotivoChange: (v: string) => void; onSalvar: () => void;
+  resolvedStatus: DirecStatus;
+  motivo: string;
+  saving: boolean;
+  onMotivoChange: (v: string) => void;
+  onSalvar: () => void;
 }) {
   const info = STATUS_CONFIRM[resolvedStatus];
   return (
@@ -410,10 +525,10 @@ function ConfirmarStep({
       </div>
 
       <div className="space-y-1">
-        <Label className="text-slate-700">Observação (opcional)</Label>
+        <Label className="text-slate-700">Observação</Label>
         <Textarea
           rows={3}
-          placeholder="Descreva a situação..."
+          placeholder="Descreva a situação com mais detalhes..."
           value={motivo}
           onChange={e => onMotivoChange(e.target.value)}
           className="bg-white"
