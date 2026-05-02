@@ -152,6 +152,16 @@ export const applyInstallmentInterest = (
   return safeBase + safeBase * (rule.interestRate / 100);
 };
 
+export const calculateInstallmentInterestAmount = (
+  baseAmount: number,
+  option: PaymentOption | undefined,
+  installments: number
+): number => {
+  const safeBase = Math.max(0, baseAmount);
+  const totalWithInterest = applyInstallmentInterest(safeBase, option, installments);
+  return Number(Math.max(0, totalWithInterest - safeBase).toFixed(2));
+};
+
 export const formatInstallmentInterest = (rule: InstallmentInterestRule): string => {
   if (rule.interestRate <= 0) return 'sem taxas';
   if (rule.interestType === 'fixed') return `R$ ${rule.interestRate.toFixed(2)} fixo`;

@@ -11,22 +11,31 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import {
   buscarFormasPagamento,
+  listarCamposFormulario,
   consultarInscricao,
   criarPagamentoInscricao,
   type CreateRegistrationPaymentPayload,
+  type FormField,
   type PaymentOption,
   type RegistrationDetails,
   type RegistrationPayment,
 } from '@/lib/eventsApi';
+
+const formatFieldName = (name: string) =>
+  name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 import { maskCardExpiry, maskCreditCard, maskCVV, removeNonDigits } from '@/lib/masks';
-import { formatInstallmentInterest, getInstallmentInterestRule } from '@/lib/installmentInterest';
+import {
+  calculateInstallmentInterestAmount,
+  formatInstallmentInterest,
+  getInstallmentInterestRule,
+} from '@/lib/installmentInterest';
 
 const normalizeStatus = (status?: string | null) =>
   (status ?? '').trim().toLowerCase();
 
 const isCancelledStatus = (status?: string | null) => {
   const normalized = normalizeStatus(status);
-  return normalized === 'canceled' || normalized === 'cancelled';
+  return normalized === 'canceled' || normalized === 'cancelled' || normalized === 'refunded';
 };
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
@@ -118,6 +127,7 @@ export default function RegistrationView() {
   const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([]);
   const [selectedPaymentOptionId, setSelectedPaymentOptionId] = useState('');
   const [loadingPaymentOptions, setLoadingPaymentOptions] = useState(false);
+  const [formFields, setFormFields] = useState<FormField[]>([]);
   const [installments, setInstallments] = useState(1);
   const [cardData, setCardData] = useState(initialCardData);
   const [copyingPixCode, setCopyingPixCode] = useState(false);
@@ -198,6 +208,14 @@ export default function RegistrationView() {
     };
   }, [registration?.event?.id]);
 
+  useEffect(() => {
+    const eventId = registration?.event?.id;
+    if (!eventId) return;
+    listarCamposFormulario(eventId)
+      .then(setFormFields)
+      .catch(() => setFormFields([]));
+  }, [registration?.event?.id]);
+
   const sortedPayments = useMemo(() => {
     if (!registration) return [];
     const payments = Array.isArray(registration.payments) ? registration.payments : [];
@@ -224,12 +242,30 @@ export default function RegistrationView() {
       : 'Pagamento único'
       : 'Modo de pagamento indisponível';
 
+  // Pago e restante calculados sem taxa de juros (só pagamentos confirmados vs. preço base)
+  const paidSemJuros = useMemo(() => {
+    return sortedPayments
+      .filter((p) => p.status === 'confirmed')
+      .reduce((sum, p) => sum + p.amount, 0);
+  }, [sortedPayments]);
+  const remainingSemJuros = Math.max(0, (registration?.finalPrice ?? 0) - paidSemJuros);
+
+  // Nome do primeiro inscrito
+  const nomeInscrito = registration?.attendees?.[0]?.attendeeData?.nome_completo ?? null;
+
+  // Mapa fieldName → label
+  const fieldLabelMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    formFields.forEach((f) => { map[f.fieldName] = f.label; });
+    return map;
+  }, [formFields]);
+
   const canPay =
     registration &&
     isBalanceDueMode &&
     !isPaid &&
     !isCancelled &&
-    registration.remaining > 0;
+    remainingSemJuros > 0;
 
   const eventIdForRegistration = registration?.event?.id;
   const optionsForMethod = useMemo(
@@ -279,7 +315,7 @@ export default function RegistrationView() {
       return;
     }
 
-    if (parsedAmount > registration.remaining) {
+    if (parsedAmount > remainingSemJuros) {
       toast.error('O valor informado é maior que o saldo restante.');
       return;
     }
@@ -307,8 +343,16 @@ export default function RegistrationView() {
 
     try {
       setSubmitting(true);
+      const feeAmount = method === 'credit_card'
+        ? calculateInstallmentInterestAmount(parsedAmount, selectedPaymentOption, installments)
+        : 0;
+      const totalAmount = Number((parsedAmount + feeAmount).toFixed(2));
       const payload: CreateRegistrationPaymentPayload = {
         amount: parsedAmount,
+        feeAmount,
+        taxAmount: feeAmount,
+        interestAmount: feeAmount,
+        totalAmount,
         method,
         paymentOptionId: selectedPaymentOption.id,
       };
@@ -321,6 +365,10 @@ export default function RegistrationView() {
           securityCode: cardData.securityCode,
           installments,
           amount: parsedAmount,
+          feeAmount,
+          taxAmount: feeAmount,
+          interestAmount: feeAmount,
+          totalAmount,
         };
       }
 
@@ -409,7 +457,7 @@ export default function RegistrationView() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-              <span>ID da inscrição: {registration.id}</span>
+              {nomeInscrito && <span className="font-medium text-foreground">{nomeInscrito}</span>}
               <span>Modo de pagamento: {paymentModeLabel}</span>
             </div>
           </CardContent>
@@ -442,13 +490,13 @@ export default function RegistrationView() {
               <div className="rounded-lg border bg-white p-4">
                 <p className="text-xs text-muted-foreground">Pago</p>
                 <p className="text-lg font-semibold text-green-700">
-                  {formatCurrency(registration.paidTotal)}
+                  {formatCurrency(paidSemJuros)}
                 </p>
               </div>
               <div className="rounded-lg border bg-white p-4">
                 <p className="text-xs text-muted-foreground">Restante</p>
                 <p className="text-lg font-semibold text-amber-700">
-                  {formatCurrency(registration.remaining)}
+                  {formatCurrency(remainingSemJuros)}
                 </p>
               </div>
             </div>
@@ -480,7 +528,7 @@ export default function RegistrationView() {
                       {entries.map(([field, value]) => (
                         <div key={`${attendee.id}-${field}`} className="text-sm space-y-1">
                           <p className="text-xs text-muted-foreground uppercase tracking-wide">
-                            {field}
+                            {fieldLabelMap[field] ?? formatFieldName(field)}
                           </p>
                           <p className="font-medium">{value}</p>
                         </div>
@@ -575,7 +623,7 @@ export default function RegistrationView() {
                       type="number"
                       min="0"
                       step="0.01"
-                      max={registration.remaining}
+                      max={remainingSemJuros}
                       value={amount}
                       onChange={(event) => setAmount(event.target.value)}
                       placeholder="0,00"
@@ -586,9 +634,9 @@ export default function RegistrationView() {
                           variant="outline"
                           size="sm"
                           type="button"
-                          onClick={() => setAmount(formatNumberInput(registration.remaining))}
+                          onClick={() => setAmount(formatNumberInput(remainingSemJuros))}
                         >
-                          Pagar total agora (R$ {formatCurrency(registration.remaining)})
+                          Pagar total agora (R$ {formatCurrency(remainingSemJuros)})
                         </Button>
                         <Button
                           variant="outline"
@@ -601,7 +649,7 @@ export default function RegistrationView() {
                       </div>
                     )}
                     <p className="text-xs text-muted-foreground">
-                      Saldo restante: {formatCurrency(registration.remaining)}
+                      Saldo restante: {formatCurrency(remainingSemJuros)}
                     </p>
                   </div>
                   <div className="space-y-[5px]">

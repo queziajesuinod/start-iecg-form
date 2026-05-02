@@ -140,6 +140,10 @@ export interface RegistrationData {
     securityCode?: string;
     installments?: number;
     amount?: number;
+    feeAmount?: number;
+    taxAmount?: number;
+    interestAmount?: number;
+    totalAmount?: number;
   };
 }
 
@@ -176,6 +180,10 @@ export interface RegistrationPaymentData {
   securityCode?: string;
   installments?: number;
   amount?: number;
+  feeAmount?: number;
+  taxAmount?: number;
+  interestAmount?: number;
+  totalAmount?: number;
 }
 
 export interface RegistrationDetails {
@@ -215,6 +223,10 @@ export interface RegistrationDetails {
 
 export interface CreateRegistrationPaymentPayload {
   amount: number;
+  feeAmount?: number;
+  taxAmount?: number;
+  interestAmount?: number;
+  totalAmount?: number;
   method: 'pix' | 'credit_card';
   paymentOptionId: string;
   paymentData?: RegistrationPaymentData;

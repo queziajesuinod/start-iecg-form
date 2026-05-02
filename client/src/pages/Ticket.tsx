@@ -32,8 +32,13 @@ interface Registration {
     };
   }>;
   finalPrice: number;
+  paidTotal?: number;
   paymentStatus: string;
   remaining?: number;
+  payments?: Array<{
+    amount: number;
+    status?: string | null;
+  }>;
 }
 
 const EVENT_DATE_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
@@ -181,7 +186,7 @@ const normalizeStatus = (status?: string | null) =>
 
 const isCancelledStatus = (status?: string | null) => {
   const normalized = normalizeStatus(status);
-  return normalized === 'cancelled' || normalized === 'canceled';
+  return normalized === 'cancelled' || normalized === 'canceled' || normalized === 'refunded';
 };
 
 export default function Ticket() {
@@ -506,11 +511,31 @@ export default function Ticket() {
 
   const normalizedPaymentStatus = normalizeStatus(registration.paymentStatus);
   const isCancelled = isCancelledStatus(registration.paymentStatus);
+  const payments = Array.isArray(registration.payments) ? registration.payments : [];
+  const valorPagoPorAmount = payments
+    .filter((payment) => {
+      const status = normalizeStatus(payment.status);
+      return status === 'confirmed' || status === 'paid' || status === 'captured';
+    })
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const valorPago =
+    payments.length > 0
+      ? valorPagoPorAmount
+      : registration.paidTotal ?? (registration.finalPrice - (registration.remaining ?? 0));
+  const valorRestante =
+    payments.length > 0
+      ? Math.max(0, registration.finalPrice - valorPago)
+      : registration.remaining ?? 0;
+  const isPartial = normalizedPaymentStatus === 'partial';
   const isPaid =
     !isCancelled &&
+    !isPartial &&
     (normalizedPaymentStatus === 'confirmed' ||
       normalizedPaymentStatus === 'paid' ||
-      (registration.remaining ?? 0) <= 0);
+      valorRestante <= 0);
+
+  const formatBRL = (value: number) =>
+    `R$ ${Number(value).toFixed(2).replace('.', ',')}`;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-50 to-white py-12 px-4">
@@ -596,6 +621,24 @@ export default function Ticket() {
 
             {!isCancelled && (
               <>
+                {/* Aviso de pagamento parcial acima dos QR codes */}
+                {isPartial && (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 flex flex-col gap-2">
+                    <p className="text-sm font-semibold text-amber-800">
+                      ⏳ Pagamento parcial — saldo pendente: {formatBRL(valorRestante)}
+                    </p>
+                    <p className="text-xs text-amber-700">
+                      Seu QR Code já está disponível, mas a participação só estará garantida após a quitação.
+                    </p>
+                    <button
+                      onClick={() => navigate(`/inscricao/${registration.orderCode}/visualizacao`)}
+                      className="self-start text-xs font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-700 transition-colors"
+                    >
+                      Quitar pagamento →
+                    </button>
+                  </div>
+                )}
+
                 {/* QR Code por inscrito */}
                 <div className="space-y-3">
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -610,7 +653,9 @@ export default function Ticket() {
                       return (
                         <div
                           key={attendee.id}
-                          className="bg-white p-3 rounded-lg border border-dashed flex flex-col items-center"
+                          className={`bg-white p-3 rounded-lg border flex flex-col items-center ${
+                            isPartial ? 'border-amber-200 opacity-80' : 'border-dashed'
+                          }`}
                         >
                           {attendeeQr ? (
                             <img
@@ -632,7 +677,9 @@ export default function Ticket() {
                     })}
                   </div>
                   <p className="text-xs text-muted-foreground text-center">
-                    Apresente o QR Code correspondente ao seu nome na entrada do evento
+                    {isPartial
+                      ? 'QR Code gerado — quite o saldo para garantir sua entrada'
+                      : 'Apresente o QR Code correspondente ao seu nome na entrada do evento'}
                   </p>
                 </div>
               </>
@@ -671,69 +718,79 @@ export default function Ticket() {
 
             <TicketDivider />
 
-            {/* Total */}
-            <div className="flex justify-between items-center text-lg font-bold">
-              <span>Total Pago</span>
-              <span className="text-primary">
-                R$ {Number(registration.finalPrice).toFixed(2).replace('.', ',')}
-              </span>
-            </div>
+            {/* Total / Parcial */}
+            {isPartial ? (
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Valor total</span>
+                  <span className="font-medium">{formatBRL(registration.finalPrice)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Valor pago</span>
+                  <span className="font-semibold text-green-700">{formatBRL(valorPago)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Saldo restante</span>
+                  <span className="font-semibold text-amber-700">{formatBRL(valorRestante)}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex justify-between items-center text-lg font-bold">
+                <span>Total Pago</span>
+                <span className="text-primary">{formatBRL(registration.finalPrice)}</span>
+              </div>
+            )}
 
             {/* Status do Pagamento */}
             <div
               className={`p-3 rounded-lg ${
-                isCancelled ? 'bg-rose-50' : isPaid ? 'bg-green-50' : 'bg-yellow-50'
+                isCancelled ? 'bg-rose-50' : isPartial ? 'bg-amber-50' : isPaid ? 'bg-green-50' : 'bg-yellow-50'
               }`}
             >
               <p
                 className={`text-sm font-medium ${
-                  isCancelled
-                    ? 'text-rose-700'
-                    : isPaid
-                    ? 'text-green-700'
-                    : 'text-yellow-700'
+                  isCancelled ? 'text-rose-700' : isPartial ? 'text-amber-700' : isPaid ? 'text-green-700' : 'text-yellow-700'
                 }`}
               >
                 {isCancelled
                   ? 'Inscrição Cancelada'
+                  : isPartial
+                  ? '⏳ Pagamento parcial — há saldo a quitar'
                   : isPaid
                   ? '✓ Pagamento Confirmado'
                   : '⌛ Aguardando Pagamento'}
               </p>
             </div>
 
-            {!isCancelled ? (
+            {/* Botão de quitação para pagamento parcial */}
+            {isPartial && (
+              <Button
+                className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+                size="lg"
+                onClick={() => navigate(`/inscricao/${registration.orderCode}/visualizacao`)}
+              >
+                Quitar saldo restante ({formatBRL(valorRestante)})
+              </Button>
+            )}
+
+            {!isCancelled && !isPartial ? (
               <>
-                {/* Botão de Download */}
                 <Button onClick={downloadTicket} className="w-full" size="lg">
                   <Download className="w-4 h-4 mr-2" />
                   Baixar Ticket (PDF)
                 </Button>
-
                 <p className="text-xs text-center text-muted-foreground">
                   Guarde este ticket! Você precisará dele para entrar no evento.
                 </p>
               </>
-            ) : (
+            ) : isCancelled ? (
               <p className="text-xs text-center text-rose-600">
                 Este pedido foi cancelado e não é possível gerar ou apresentar o ticket.
               </p>
-            )}
+            ) : null}
           </CardContent>
         </Card>
 
-        {/* Informações Adicionais */}
-        <Card>
-          <CardContent className="pt-6">
-            <h3 className="font-semibold mb-3">Informações Importantes</h3>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li>• Chegue com 30 minutos de antecedência</li>
-              <li>• Apresente este QR Code na entrada</li>
-              <li>• Traga um documento com foto</li>
-              <li>• Em caso de dúvidas, entre em contato com a organização</li>
-            </ul>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

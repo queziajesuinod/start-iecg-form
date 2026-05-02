@@ -30,7 +30,12 @@ import {
 } from '@/lib/eventsApi';
 import { maskCPForCNPJ, maskPhone, validateCPForCNPJ, validateEmail, removeNonDigits, maskCreditCard, maskCardExpiry, maskCVV } from '@/lib/masks';
 import { isBatchActiveNow } from '@/lib/eventUtils';
-import { applyInstallmentInterest, formatInstallmentInterest, getInstallmentInterestRule } from '@/lib/installmentInterest';
+import {
+  applyInstallmentInterest,
+  calculateInstallmentInterestAmount,
+  formatInstallmentInterest,
+  getInstallmentInterestRule,
+} from '@/lib/installmentInterest';
 import { getCieloDeniedMessage } from '@/lib/paymentDenialReason';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -237,8 +242,8 @@ export default function EventDetails() {
   const [inscritoAbertoId, setInscritoAbertoId] = useState<string>('1');
   const [formaPagamento, setFormaPagamento] = useState<string>(''); // ID da forma de pagamento
   const [parcelas, setParcelas] = useState(1);
-  const [valorPagamento, setValorPagamento] = useState('');
-  const [valorPagamentoEditado, setValorPagamentoEditado] = useState(false);
+  const [modoSinal, setModoSinal] = useState<'sinal' | 'total' | 'outro'>('sinal');
+  const [valorOutro, setValorOutro] = useState('');
   const [dadosPagamento, setDadosPagamento] = useState({
     cardNumber: '',
     cardHolder: '',
@@ -556,8 +561,6 @@ export default function EventDetails() {
     return Math.max(0, total);
   };
 
-  const parseValorPagamento = () => Number(valorPagamento.replace(',', '.'));
-
   const validarFormulario = () => {
     // Validar que todos os inscritos têm um lote selecionado
     const inscritosSemLote = inscritos.filter((i) => !i.batchId);
@@ -614,20 +617,25 @@ export default function EventDetails() {
       }
     }
 
-    if (requiresPayment && evento?.registrationPaymentMode === 'BALANCE_DUE') {
-      const total = calcularValorTotal();
-      const valor = parseValorPagamento();
-      if (!valor || valor <= 0) {
+    if (requiresPayment && isBalanceDue) {
+      if (!baseDepositoSemJuros || baseDepositoSemJuros <= 0) {
         toast.error('Informe o valor do sinal ou pagamento inicial');
         return false;
       }
-      if (minimoSinal > 0 && valor < minimoSinal) {
+      if (minimoSinal > 0 && Math.round(baseDepositoSemJuros * 100) < Math.round(minimoSinal * 100)) {
         toast.error(`O valor do sinal deve ser de pelo menos R$ ${minimoSinal.toFixed(2)}`);
         return false;
       }
-      if (valor > total) {
-        toast.error('O valor informado não pode ser maior que o total');
+      if (baseDepositoSemJuros > totalSemJuros) {
+        toast.error('O valor informado nao pode ser maior que o total');
         return false;
+      }
+      if (modoSinal === 'outro') {
+        const val = parseFloat(valorOutro.replace(',', '.')) || 0;
+        if (!val || val <= 0) {
+          toast.error('Informe um valor valido para o pagamento inicial');
+          return false;
+        }
       }
     }
 
@@ -674,8 +682,11 @@ export default function EventDetails() {
 
     try {
       setSubmitting(true);
-      const pagamentoInicial =
-        evento?.registrationPaymentMode === 'BALANCE_DUE' ? parseValorPagamento() : undefined;
+      const pagamentoBase = isBalanceDue ? baseDepositoSemJuros : totalSemJuros;
+      const taxaPagamento = selectedPaymentOption?.paymentType === 'credit_card'
+        ? calculateInstallmentInterestAmount(pagamentoBase, selectedPaymentOption, parcelas)
+        : 0;
+      const pagamentoTotal = Number((pagamentoBase + taxaPagamento).toFixed(2));
       const resultado = await processarInscricao({
         eventId,
         quantity: inscritos.length,
@@ -690,7 +701,11 @@ export default function EventDetails() {
           ? {
               ...dadosPagamento,
               installments: parcelas,
-              amount: pagamentoInicial,
+              amount: pagamentoBase,
+              feeAmount: taxaPagamento,
+              taxAmount: taxaPagamento,
+              interestAmount: taxaPagamento,
+              totalAmount: pagamentoTotal,
             }
           : undefined,
       });
@@ -939,33 +954,31 @@ export default function EventDetails() {
   );
   const requiresPayment = totalComTaxas > 0;
   const paymentUnavailableEffective = !hasLotAvailable || (requiresPayment && formasPagamento.length === 0);
-  const valorPagamentoNumero = parseValorPagamento();
-  const pagamentoAgora =
-    evento?.registrationPaymentMode === 'BALANCE_DUE' && valorPagamentoNumero > 0
-      ? valorPagamentoNumero
-      : totalComTaxas;
-  const saldoEstimado =
-    evento?.registrationPaymentMode === 'BALANCE_DUE'
-      ? Math.max(0, totalComTaxas - pagamentoAgora)
-      : 0;
-  const minimoSinal = evento?.depositAmount ?? 0;
-  const sinaValido =
-    minimoSinal <= 0 ||
-    valorPagamentoNumero <= 0 ||
-    valorPagamentoNumero >= minimoSinal;
   const isBalanceDue = evento?.registrationPaymentMode === 'BALANCE_DUE';
-  // Em BALANCE_DUE + crédito parcelado: juros sobre o sinal; fora disso: totalComTaxas já tem juros
-  const baseParcelamento = (() => {
-    if (!isBalanceDue) return totalComTaxas;
-    if (
-      selectedPaymentOption?.paymentType === 'credit_card' &&
-      pagamentoAgora > 0 &&
-      parcelas > 1
-    ) {
-      return applyInstallmentInterest(pagamentoAgora, selectedPaymentOption, parcelas);
-    }
-    return pagamentoAgora;
-  })();
+  const totalSemJuros = Math.max(0, subtotal - desconto);
+  const minimoSinal = evento?.depositAmount ?? 0;
+  const valorOutroNumero = parseFloat(valorOutro.replace(',', '.')) || 0;
+
+  const baseDepositoSemJuros = isBalanceDue
+    ? modoSinal === 'sinal'
+      ? Math.min(evento?.depositAmount ?? totalSemJuros, totalSemJuros)
+      : modoSinal === 'total'
+      ? totalSemJuros
+      : Math.min(Math.max(0, valorOutroNumero), totalSemJuros)
+    : totalSemJuros;
+
+  const depositoComJuros =
+    isBalanceDue && selectedPaymentOption?.paymentType === 'credit_card' && parcelas > 1
+      ? applyInstallmentInterest(baseDepositoSemJuros, selectedPaymentOption, parcelas)
+      : baseDepositoSemJuros;
+
+  const pagamentoAgora = isBalanceDue ? depositoComJuros : totalComTaxas;
+  const saldoEstimado = isBalanceDue ? Math.max(0, totalSemJuros - baseDepositoSemJuros) : 0;
+  const sinalAbaixoMinimo =
+    isBalanceDue &&
+    minimoSinal > 0 &&
+    baseDepositoSemJuros > 0 &&
+    Math.round(baseDepositoSemJuros * 100) < Math.round(minimoSinal * 100);
   const cardNumberDisplay = dadosPagamento.cardNumber?.trim() || '•••• •••• •••• ••••';
   const cardHolderDisplay = dadosPagamento.cardHolder?.trim() || 'NOME COMPLETO';
   const cardExpDisplay = dadosPagamento.expirationDate?.trim() || 'MM/AAAA';
@@ -990,41 +1003,6 @@ export default function EventDetails() {
       setParcelas(1);
     }
   }, [formaPagamento, selectedPaymentOption, parcelas]);
-
-  // Ao trocar a forma de pagamento, recalcula o sinal sugerido
-  useEffect(() => {
-    setValorPagamentoEditado(false);
-  }, [formaPagamento]);
-  useEffect(() => {
-    if (evento?.registrationPaymentMode !== 'BALANCE_DUE') {
-      if (valorPagamento !== '') {
-        setValorPagamento('');
-      }
-      if (valorPagamentoEditado) {
-        setValorPagamentoEditado(false);
-      }
-      return;
-    }
-    if (valorPagamentoEditado) return;
-    if (!totalComTaxas) {
-      if (valorPagamento !== '') {
-        setValorPagamento('');
-      }
-      return;
-    }
-    const sugerido = evento.depositAmount ?? totalComTaxas;
-    const proximoValor = sugerido.toFixed(2);
-    if (valorPagamento !== proximoValor) {
-      setValorPagamento(proximoValor);
-    }
-  }, [
-    evento?.registrationPaymentMode,
-    evento?.depositAmount,
-    totalComTaxas,
-    valorPagamento,
-    valorPagamentoEditado,
-    formaPagamento,
-  ]);
 
   if (loadingEvent) {
     return (
@@ -1320,48 +1298,59 @@ export default function EventDetails() {
                     <span>- R$ {Math.min(desconto, subtotal).toFixed(2)}</span>
                   </div>
                 )}
-                {taxasAplicados > 0 && (
-                  <div className="flex justify-between text-orange-600">
-                    <span>Taxas:</span>
-                    <span>+ R$ {taxasAplicados.toFixed(2)}</span>
-                  </div>
-                )}
-                <Separator />
-                <div className="flex justify-between font-bold text-lg">
-                  <span>Total do evento:</span>
-                  <span>R$ {totalComTaxas.toFixed(2)}</span>
-                </div>
-
-                {/* Detalhamento BALANCE_DUE */}
-                {isBalanceDue && pagamentoAgora > 0 && (
+                {isBalanceDue ? (
                   <>
-                    <div className="flex justify-between text-sm text-blue-700 font-medium">
-                      <span>Pagamento agora (sinal):</span>
-                      <span>R$ {pagamentoAgora.toFixed(2)}</span>
+                    <Separator />
+                    <div className="flex justify-between text-sm text-muted-foreground">
+                      <span>Valor total do evento:</span>
+                      <span>R$ {totalSemJuros.toFixed(2)}</span>
                     </div>
+                    <div className="flex justify-between">
+                      <span>Pagando agora:</span>
+                      <span>R$ {baseDepositoSemJuros.toFixed(2)}</span>
+                    </div>
+                    {depositoComJuros > baseDepositoSemJuros && (
+                      <div className="flex justify-between text-orange-600">
+                        <span>Taxas ({parcelas}x cartao):</span>
+                        <span>+ R$ {(depositoComJuros - baseDepositoSemJuros).toFixed(2)}</span>
+                      </div>
+                    )}
+                    <Separator />
+                    <div className="flex justify-between font-bold text-lg">
+                      <span>Total agora:</span>
+                      <span>R$ {depositoComJuros.toFixed(2)}</span>
+                    </div>
+                    {formaPagamento && parcelas > 1 && (
+                      <div className="text-sm text-muted-foreground">
+                        Parcelado em {parcelas}x de R$ {(depositoComJuros / parcelas).toFixed(2)}
+                      </div>
+                    )}
                     {saldoEstimado > 0 && (
-                      <div className="flex justify-between text-sm text-slate-500">
+                      <div className="flex justify-between text-sm text-amber-700 font-medium pt-1 border-t border-amber-200">
                         <span>Saldo restante:</span>
                         <span>R$ {saldoEstimado.toFixed(2)}</span>
                       </div>
                     )}
-                    {selectedPaymentOption?.paymentType === 'credit_card' && parcelas > 1 && (
+                  </>
+                ) : (
+                  <>
+                    {taxasAplicados > 0 && (
+                      <div className="flex justify-between text-orange-600">
+                        <span>Taxas:</span>
+                        <span>+ R$ {taxasAplicados.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <Separator />
+                    <div className="flex justify-between font-bold text-lg">
+                      <span>Total:</span>
+                      <span>R$ {totalComTaxas.toFixed(2)}</span>
+                    </div>
+                    {formaPagamento && parcelas > 1 && (
                       <div className="text-sm text-muted-foreground">
-                        Sinal parcelado em {parcelas}x de R$ {(baseParcelamento / parcelas).toFixed(2)}
-                        {(() => {
-                          const regra = getInstallmentInterestRule(selectedPaymentOption, parcelas);
-                          return regra.interestRate > 0 ? ` (${formatInstallmentInterest(regra)})` : ' sem taxas';
-                        })()}
+                        Parcelado em {parcelas}x de R$ {(totalComTaxas / parcelas).toFixed(2)}
                       </div>
                     )}
                   </>
-                )}
-
-                {/* Parcelamento fora de BALANCE_DUE */}
-                {!isBalanceDue && formaPagamento && parcelas > 1 && (
-                  <div className="text-sm text-muted-foreground">
-                    Parcelado em {parcelas}x de R$ {(baseParcelamento / parcelas).toFixed(2)}
-                  </div>
                 )}
               </div>
             )}
@@ -1412,87 +1401,101 @@ export default function EventDetails() {
                   </Select>
                 </div>
 
-                {evento?.registrationPaymentMode === 'BALANCE_DUE' && (
-                  <div className="rounded-lg border bg-blue-50 p-4 space-y-3">
-                    <div>
-                      <Label htmlFor="valor-pagamento">Valor do sinal/pagamento inicial</Label>
-                      <Input
-                        id="valor-pagamento"
-                        type="number"
-                        min={minimoSinal > 0 ? minimoSinal : 0}
-                        step="0.01"
-                        max={totalComTaxas}
-                        value={valorPagamento}
-                        onChange={(e) => {
-                          setValorPagamento(e.target.value);
-                          setValorPagamentoEditado(true);
-                        }}
-                        placeholder="0,00"
-                        className={!sinaValido ? 'border-red-400 focus-visible:ring-red-400' : ''}
-                      />
-                      {minimoSinal > 0 && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Valor mínimo do sinal: <span className="font-semibold">R$ {minimoSinal.toFixed(2)}</span>
-                        </p>
+                {isBalanceDue && totalSemJuros > 0 && (
+                  <div className="rounded-lg border bg-blue-50 p-4 space-y-4">
+                    <p className="text-sm font-semibold text-blue-900">Quanto deseja pagar agora?</p>
+                    <div className="flex flex-col gap-2">
+                      {evento?.depositAmount && evento.depositAmount < totalSemJuros && (
+                        <button
+                          type="button"
+                          onClick={() => setModoSinal('sinal')}
+                          className={`flex items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors ${
+                            modoSinal === 'sinal'
+                              ? 'border-blue-500 bg-white shadow-sm'
+                              : 'border-slate-200 bg-white/60 hover:bg-white'
+                          }`}
+                        >
+                          <div>
+                            <p className="text-sm font-medium text-slate-800">Pagar sinal</p>
+                            <p className="text-xs text-slate-500">Pague parte agora e quite o restante depois</p>
+                          </div>
+                          <span className="ml-4 shrink-0 font-semibold text-blue-700">
+                            R$ {evento.depositAmount.toFixed(2)}
+                          </span>
+                        </button>
                       )}
-                      {!sinaValido && (
-                        <p className="text-xs text-red-500 mt-1">
-                          O valor informado é menor que o mínimo exigido (R$ {minimoSinal.toFixed(2)})
-                        </p>
-                      )}
-                      {sinaValido && minimoSinal <= 0 && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Você pode pagar apenas um sinal agora e quitar o restante depois.
-                        </p>
+                      <button
+                        type="button"
+                        onClick={() => setModoSinal('total')}
+                        className={`flex items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors ${
+                          modoSinal === 'total'
+                            ? 'border-blue-500 bg-white shadow-sm'
+                            : 'border-slate-200 bg-white/60 hover:bg-white'
+                        }`}
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-slate-800">Pagar valor total</p>
+                          <p className="text-xs text-slate-500">Quitar tudo de uma vez</p>
+                        </div>
+                        <span className="ml-4 shrink-0 font-semibold text-blue-700">
+                          R$ {totalSemJuros.toFixed(2)}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setModoSinal('outro')}
+                        className={`flex items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors ${
+                          modoSinal === 'outro'
+                            ? 'border-blue-500 bg-white shadow-sm'
+                            : 'border-slate-200 bg-white/60 hover:bg-white'
+                        }`}
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-slate-800">Outro valor</p>
+                          <p className="text-xs text-slate-500">Informe o valor que deseja pagar agora</p>
+                        </div>
+                      </button>
+                      {modoSinal === 'outro' && (
+                        <div className="pl-2">
+                          <Input
+                            type="number"
+                            min={minimoSinal > 0 ? minimoSinal : 0.01}
+                            step="0.01"
+                            max={totalSemJuros}
+                            value={valorOutro}
+                            onChange={(e) => setValorOutro(e.target.value)}
+                            placeholder={`Máx. R$ ${totalSemJuros.toFixed(2)}`}
+                            className={`bg-white ${sinalAbaixoMinimo ? 'border-red-400 focus-visible:ring-red-400' : ''}`}
+                          />
+                          {minimoSinal > 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Valor minimo do sinal: <span className="font-semibold">R$ {minimoSinal.toFixed(2)}</span>
+                            </p>
+                          )}
+                          {sinalAbaixoMinimo && (
+                            <p className="text-xs text-red-500 mt-1">
+                              O valor informado e menor que o minimo exigido.
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
-                    {/* Preview de parcelas do sinal quando crédito selecionado */}
-                    {selectedPaymentOption?.paymentType === 'credit_card' && pagamentoAgora > 0 && (
-                      <div className="rounded-md bg-white border border-blue-200 px-3 py-2 text-sm text-blue-800 space-y-0.5">
-                        <p className="font-medium text-xs text-blue-500 uppercase tracking-wide">Sinal no cartão</p>
-                        {Array.from({ length: selectedPaymentOption.maxInstallments || 1 }, (_, i) => i + 1)
-                          .slice(0, 4)
-                          .map(p => {
-                            const base = applyInstallmentInterest(pagamentoAgora, selectedPaymentOption, p);
-                            const regraParcela = getInstallmentInterestRule(selectedPaymentOption, p);
-                            const temTaxa = regraParcela.interestRate > 0 && p > 1;
-                            return (
-                              <p key={p} className={`text-xs ${p === parcelas ? 'font-semibold text-blue-700' : 'text-blue-600'}`}>
-                                {p}x de R$ {(base / p).toFixed(2)}
-                                {temTaxa ? ` (${formatInstallmentInterest(regraParcela)})` : ' sem taxas'}
-                                {p === parcelas ? ' ← selecionado' : ''}
-                              </p>
-                            );
-                          })}
-                        {(selectedPaymentOption.maxInstallments || 1) > 4 && (
-                          <p className="text-xs text-blue-400">+ outras opções no seletor abaixo</p>
-                        )}
+                    <div className="border-t border-blue-200 pt-3 space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Pagando agora:</span>
+                        <span className="font-semibold text-blue-800">
+                          R$ {depositoComJuros.toFixed(2)}
+                          {selectedPaymentOption?.paymentType === 'credit_card' && parcelas > 1 && baseDepositoSemJuros !== depositoComJuros && (
+                            <span className="text-xs text-slate-500 ml-1">(com juros)</span>
+                          )}
+                        </span>
                       </div>
-                    )}
-
-                    <div className="flex flex-wrap gap-2">
-                      {evento?.depositAmount && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => {
-                            setValorPagamento(evento.depositAmount?.toFixed(2) ?? '');
-                            setValorPagamentoEditado(true);
-                          }}
-                        >
-                          Usar sinal sugerido (R$ {evento.depositAmount.toFixed(2)})
-                        </Button>
+                      {saldoEstimado > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-600">Saldo restante:</span>
+                          <span className="font-semibold text-amber-700">R$ {saldoEstimado.toFixed(2)}</span>
+                        </div>
                       )}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          setValorPagamento(totalComTaxas.toFixed(2));
-                          setValorPagamentoEditado(true);
-                        }}
-                      >
-                        Pagar total
-                      </Button>
                     </div>
                   </div>
                 )}
@@ -1511,10 +1514,9 @@ export default function EventDetails() {
                           (_, i) => i + 1
                         ).map((p) => {
                           const pagamento = selectedPaymentOption;
-                          const base = isBalanceDue && pagamentoAgora > 0
-                            ? applyInstallmentInterest(pagamentoAgora, pagamento, p)
-                            : calcularValorTotal(p);
-                          const valorParcela = base / p;
+                          const baseCalculo = isBalanceDue ? baseDepositoSemJuros : (subtotal - desconto);
+                          const totalParcelado = applyInstallmentInterest(baseCalculo, pagamento, p);
+                          const valorParcela = totalParcelado / p;
                           const regraParcela = getInstallmentInterestRule(pagamento, p);
                           const semTaxas = !pagamento || regraParcela.interestRate <= 0 || p === 1;
                           return (
