@@ -192,32 +192,6 @@ export default function RegistrationView() {
     }
   }, [method]);
 
-  // Auto-refresh PIX QR code every 5 minutes
-  useEffect(() => {
-    const hasPendingPix = Boolean(registration?.pixQrCodeBase64) && !isPaid && !isCancelled;
-    if (!hasPendingPix) return;
-
-    let seconds = 300;
-    setPixSecondsLeft(seconds);
-
-    const tick = setInterval(async () => {
-      seconds--;
-      setPixSecondsLeft(seconds);
-      if (seconds <= 0) {
-        seconds = 300;
-        setPixSecondsLeft(300);
-        if (orderCode) {
-          try {
-            const fresh = await consultarInscricao(orderCode);
-            setRegistration(fresh);
-          } catch {}
-        }
-      }
-    }, 1000);
-
-    return () => clearInterval(tick);
-  }, [registration?.pixQrCode, isPaid, isCancelled, orderCode]);
-
   useEffect(() => {
     const eventId = registration?.event?.id;
     if (!eventId) {
@@ -275,6 +249,32 @@ export default function RegistrationView() {
         normalizedPaymentStatus === 'confirmed' ||
         registration.remaining <= 0)
     : false;
+
+  // Auto-refresh PIX QR code every 5 minutes
+  useEffect(() => {
+    const hasPendingPix = Boolean(registration?.pixQrCodeBase64) && !isPaid && !isCancelled;
+    if (!hasPendingPix) return;
+
+    let seconds = 300;
+    setPixSecondsLeft(seconds);
+
+    const tick = setInterval(async () => {
+      seconds--;
+      setPixSecondsLeft(seconds);
+      if (seconds <= 0) {
+        seconds = 300;
+        setPixSecondsLeft(300);
+        if (orderCode) {
+          try {
+            const fresh = await consultarInscricao(orderCode);
+            setRegistration(fresh);
+          } catch {}
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(tick);
+  }, [registration?.pixQrCode, isPaid, isCancelled, orderCode]);
 
   const eventPaymentMode = registration?.event?.registrationPaymentMode;
   const isBalanceDueMode = eventPaymentMode === 'BALANCE_DUE';
