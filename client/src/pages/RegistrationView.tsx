@@ -133,15 +133,44 @@ export default function RegistrationView() {
   const [copyingPixCode, setCopyingPixCode] = useState(false);
   const [pixSecondsLeft, setPixSecondsLeft] = useState(300);
   const [refreshingPix, setRefreshingPix] = useState(false);
+  const [activePixQrCode, setActivePixQrCode] = useState<string | null>(null);
+  const [activePixQrCodeBase64, setActivePixQrCodeBase64] = useState<string | null>(null);
+
+  // Extracts PIX QR code from any response shape the backend may return
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const extractPixQrCodes = (response: any): { pixQrCode: string | null; pixQrCodeBase64: string | null } => {
+    // Primary: pagamento field (same format as first registration via EventDetails.tsx)
+    if (response?.pagamento?.qrCodeString || response?.pagamento?.qrCodeBase64) {
+      return {
+        pixQrCode: response.pagamento.qrCodeString || null,
+        pixQrCodeBase64: response.pagamento.qrCodeBase64 || null,
+      };
+    }
+    // Fallback: top-level registration fields
+    if (response?.pixQrCode || response?.pixQrCodeBase64) {
+      return { pixQrCode: response.pixQrCode || null, pixQrCodeBase64: response.pixQrCodeBase64 || null };
+    }
+    // Fallback: nested in payments array
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const latestPix = [...(response?.payments ?? [])].sort((a: any, b: any) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ).find((p: any) => p.method === 'pix' && p.status === 'pending');
+    return {
+      pixQrCode: latestPix?.pixQrCode || latestPix?.qrCodeString || null,
+      pixQrCodeBase64: latestPix?.pixQrCodeBase64 || latestPix?.qrCodeBase64 || null,
+    };
+  };
 
   const handleCopyPixCode = async () => {
-    if (!registration?.pixQrCode) {
+    const code = activePixQrCode || registration?.pixQrCode;
+    if (!code) {
       toast.error('Código PIX não disponível');
       return;
     }
     try {
       setCopyingPixCode(true);
-      await navigator.clipboard.writeText(registration.pixQrCode);
+      await navigator.clipboard.writeText(code);
       toast.success('Código PIX copiado');
     } catch (error) {
       console.error('Erro ao copiar PIX code', error);
@@ -170,6 +199,11 @@ export default function RegistrationView() {
     try {
       setRefreshingPix(true);
       const fresh = await consultarInscricao(orderCode);
+      const { pixQrCode, pixQrCodeBase64 } = extractPixQrCodes(fresh);
+      if (pixQrCode || pixQrCodeBase64) {
+        setActivePixQrCode(pixQrCode);
+        setActivePixQrCodeBase64(pixQrCodeBase64);
+      }
       setRegistration(fresh);
       setPixSecondsLeft(300);
     } catch (error) {
@@ -252,7 +286,7 @@ export default function RegistrationView() {
 
   // Auto-refresh PIX QR code every 5 minutes
   useEffect(() => {
-    const hasPendingPix = Boolean(registration?.pixQrCodeBase64) && !isPaid && !isCancelled;
+    const hasPendingPix = Boolean(activePixQrCodeBase64) && !isPaid && !isCancelled;
     if (!hasPendingPix) return;
 
     let seconds = 300;
@@ -267,6 +301,11 @@ export default function RegistrationView() {
         if (orderCode) {
           try {
             const fresh = await consultarInscricao(orderCode);
+            const { pixQrCode, pixQrCodeBase64 } = extractPixQrCodes(fresh);
+            if (pixQrCode || pixQrCodeBase64) {
+              setActivePixQrCode(pixQrCode);
+              setActivePixQrCodeBase64(pixQrCodeBase64);
+            }
             setRegistration(fresh);
           } catch {}
         }
@@ -274,7 +313,7 @@ export default function RegistrationView() {
     }, 1000);
 
     return () => clearInterval(tick);
-  }, [registration?.pixQrCode, isPaid, isCancelled, orderCode]);
+  }, [activePixQrCode, registration?.pixQrCode, isPaid, isCancelled, orderCode]);
 
   const eventPaymentMode = registration?.event?.registrationPaymentMode;
   const isBalanceDueMode = eventPaymentMode === 'BALANCE_DUE';
@@ -309,6 +348,9 @@ export default function RegistrationView() {
     !isPaid &&
     !isCancelled &&
     remainingSemJuros > 0;
+
+  const displayPixQrCode = activePixQrCode ?? null;
+  const displayPixQrCodeBase64 = activePixQrCodeBase64 ?? null;
 
   const eventIdForRegistration = registration?.event?.id;
   const optionsForMethod = useMemo(
@@ -416,10 +458,19 @@ export default function RegistrationView() {
       }
 
       const updated = await criarPagamentoInscricao(registration.id, payload);
-      if (method === 'pix' && orderCode) {
-        const fresh = await consultarInscricao(orderCode);
-        setRegistration(fresh);
+      if (method === 'pix') {
+        // Extract QR code from POST response before re-fetching (POST has qrCode, GET may not)
+        const { pixQrCode, pixQrCodeBase64 } = extractPixQrCodes(updated);
+        setActivePixQrCode(pixQrCode);
+        setActivePixQrCodeBase64(pixQrCodeBase64);
         setPixSecondsLeft(300);
+        // Re-fetch full registration so financial status / attendees stay populated
+        if (orderCode) {
+          const fresh = await consultarInscricao(orderCode);
+          setRegistration(fresh);
+        } else {
+          setRegistration(updated);
+        }
       } else {
         setRegistration(updated);
       }
@@ -591,7 +642,7 @@ export default function RegistrationView() {
           </Card>
         )}
 
-        {registration.pixQrCodeBase64 && !isPaid && !isCancelled && (
+        {displayPixQrCodeBase64 && !isPaid && !isCancelled && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -604,7 +655,7 @@ export default function RegistrationView() {
             </CardHeader>
             <CardContent className="flex flex-col items-center gap-4">
               <img
-                src={`data:image/png;base64,${registration.pixQrCodeBase64}`}
+                src={`data:image/png;base64,${displayPixQrCodeBase64}`}
                 alt="QR Code PIX"
                 className="w-56 h-56 border rounded-lg bg-white"
               />
@@ -626,11 +677,11 @@ export default function RegistrationView() {
               <p className="text-sm text-muted-foreground text-center">
                 Após o pagamento, esta tela será atualizada automaticamente.
               </p>
-              {registration.pixQrCode && (
-                  <div className="w-full max-w-xl space-y-[5px]">
+              {displayPixQrCode && (
+                <div className="w-full max-w-xl space-y-[5px]">
                   <Label className="text-xs uppercase tracking-wide">Código PIX</Label>
                   <div className="flex gap-2">
-                    <Input value={registration.pixQrCode} readOnly className="flex-1" />
+                    <Input value={displayPixQrCode} readOnly className="flex-1" />
                     <Button
                       size="sm"
                       variant="outline"

@@ -171,6 +171,8 @@ export interface RegistrationPayment {
   status: 'pending' | 'confirmed' | 'failed' | 'canceled';
   createdAt: string;
   notes?: string | null;
+  pixQrCode?: string | null;
+  pixQrCodeBase64?: string | null;
 }
 
 export interface RegistrationPaymentData {
