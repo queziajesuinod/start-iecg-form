@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useRoute } from 'wouter';
-import { ArrowLeft, CheckCircle2, CreditCard, Loader2, QrCode } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, CreditCard, Loader2, QrCode, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -131,6 +131,8 @@ export default function RegistrationView() {
   const [installments, setInstallments] = useState(1);
   const [cardData, setCardData] = useState(initialCardData);
   const [copyingPixCode, setCopyingPixCode] = useState(false);
+  const [pixSecondsLeft, setPixSecondsLeft] = useState(300);
+  const [refreshingPix, setRefreshingPix] = useState(false);
 
   const handleCopyPixCode = async () => {
     if (!registration?.pixQrCode) {
@@ -163,6 +165,21 @@ export default function RegistrationView() {
     }
   };
 
+  const refreshPixQrCode = async () => {
+    if (!orderCode) return;
+    try {
+      setRefreshingPix(true);
+      const fresh = await consultarInscricao(orderCode);
+      setRegistration(fresh);
+      setPixSecondsLeft(300);
+    } catch (error) {
+      console.error('Erro ao atualizar QR Code PIX:', error);
+      toast.error('Não foi possível atualizar o QR Code PIX.');
+    } finally {
+      setRefreshingPix(false);
+    }
+  };
+
   useEffect(() => {
     if (!orderCode) return;
     carregarInscricao();
@@ -174,6 +191,32 @@ export default function RegistrationView() {
       setInstallments(1);
     }
   }, [method]);
+
+  // Auto-refresh PIX QR code every 5 minutes
+  useEffect(() => {
+    const hasPendingPix = Boolean(registration?.pixQrCodeBase64) && !isPaid && !isCancelled;
+    if (!hasPendingPix) return;
+
+    let seconds = 300;
+    setPixSecondsLeft(seconds);
+
+    const tick = setInterval(async () => {
+      seconds--;
+      setPixSecondsLeft(seconds);
+      if (seconds <= 0) {
+        seconds = 300;
+        setPixSecondsLeft(300);
+        if (orderCode) {
+          try {
+            const fresh = await consultarInscricao(orderCode);
+            setRegistration(fresh);
+          } catch {}
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(tick);
+  }, [registration?.pixQrCode, isPaid, isCancelled, orderCode]);
 
   useEffect(() => {
     const eventId = registration?.event?.id;
@@ -373,7 +416,13 @@ export default function RegistrationView() {
       }
 
       const updated = await criarPagamentoInscricao(registration.id, payload);
-      setRegistration(updated);
+      if (method === 'pix' && orderCode) {
+        const fresh = await consultarInscricao(orderCode);
+        setRegistration(fresh);
+        setPixSecondsLeft(300);
+      } else {
+        setRegistration(updated);
+      }
       setAmount('');
       if (method === 'credit_card') {
         setCardData(initialCardData);
@@ -559,6 +608,21 @@ export default function RegistrationView() {
                 alt="QR Code PIX"
                 className="w-56 h-56 border rounded-lg bg-white"
               />
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <span>
+                  Expira em {Math.floor(pixSecondsLeft / 60)}:{String(pixSecondsLeft % 60).padStart(2, '0')}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refreshPixQrCode}
+                  disabled={refreshingPix}
+                  className="h-7 gap-1"
+                >
+                  <RefreshCw className={`h-3 w-3 ${refreshingPix ? 'animate-spin' : ''}`} />
+                  {refreshingPix ? 'Atualizando...' : 'Atualizar QR Code'}
+                </Button>
+              </div>
               <p className="text-sm text-muted-foreground text-center">
                 Após o pagamento, esta tela será atualizada automaticamente.
               </p>
