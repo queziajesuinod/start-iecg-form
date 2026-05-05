@@ -24,6 +24,8 @@ const statusBadge = (status?: string) =>
 
 type WizardStep =
   | 'q_retorno'           // primeiro contato: a pessoa retornou o contato?
+  | 'q_insistiu'          // não retornou: o líder já tentou mais de uma vez?
+  | 'q_ignorou'           // retornou mas depois ignorou?
   | 'q_manteve_contato'   // em consolidação: manteve o contato?
   | 'q_convite_celula'    // fez o convite para a célula?
   | 'q_aceitou_convite'   // aceitou ou deu negativa ao convite?
@@ -156,10 +158,29 @@ export default function DirecionamentosPendentes() {
   // Cenário 2/3: primeiro contato — a pessoa retornou?
   const handleRetorno = (item: DirecPendente, retornou: boolean) => {
     if (!retornou) {
-      // Cenário 3: mandou msg, não teve retorno
-      resolve(item.id, 'q_retorno', 'CONTATO_LIDER_SEM_RETORNO', 'Líder enviou mensagem, sem retorno do apelo');
+      // Não respondeu — verificar se já insistiu mais de uma vez
+      goTo(item.id, 'q_retorno', 'q_insistiu');
     } else {
-      goTo(item.id, 'q_retorno', 'q_convite_celula');
+      // Retornou — verificar se manteve o contato ou passou a ignorar
+      goTo(item.id, 'q_retorno', 'q_ignorou');
+    }
+  };
+
+  // Não retornou: o líder já tentou mais de uma vez?
+  const handleInsistiu = (item: DirecPendente, insistiu: boolean) => {
+    if (insistiu) {
+      resolve(item.id, 'q_insistiu', 'CONSOLIDACAO_INTERROMPIDA', 'Tentou contato mais de uma vez sem retorno');
+    } else {
+      resolve(item.id, 'q_insistiu', 'CONTATO_LIDER_SEM_RETORNO', 'Líder enviou mensagem, sem retorno do apelo');
+    }
+  };
+
+  // Retornou mas depois passou a ignorar?
+  const handleIgnorou = (item: DirecPendente, ignorou: boolean) => {
+    if (ignorou) {
+      resolve(item.id, 'q_ignorou', 'CONSOLIDACAO_INTERROMPIDA', 'Respondeu inicialmente mas passou a ignorar o contato');
+    } else {
+      goTo(item.id, 'q_ignorou', 'q_convite_celula');
     }
   };
 
@@ -316,6 +337,8 @@ export default function DirecionamentosPendentes() {
                     isEmConsolidacao={item.status === 'EM_CONSOLIDACAO'}
                     onManteveCont={sim => handleManteveCont(item, sim)}
                     onRetorno={sim => handleRetorno(item, sim)}
+                    onInsistiu={insistiu => handleInsistiu(item, insistiu)}
+                    onIgnorou={ignorou => handleIgnorou(item, ignorou)}
                     onConviteCelula={fez => handleConviteCelula(item, fez)}
                     onAceitouConvite={aceitou => handleAceitouConvite(item, aceitou)}
                     onFoiCelula={foi => handleFoiCelula(item, foi)}
@@ -344,6 +367,8 @@ interface WizardProps {
   isEmConsolidacao: boolean;
   onManteveCont: (sim: boolean) => void;
   onRetorno: (sim: boolean) => void;
+  onInsistiu: (insistiu: boolean) => void;
+  onIgnorou: (ignorou: boolean) => void;
   onConviteCelula: (fez: boolean) => void;
   onAceitouConvite: (aceitou: boolean) => void;
   onFoiCelula: (foi: boolean) => void;
@@ -356,7 +381,7 @@ interface WizardProps {
 
 function WizardAcompanhamento({
   wiz, isEmConsolidacao,
-  onManteveCont, onRetorno, onConviteCelula, onAceitouConvite,
+  onManteveCont, onRetorno, onInsistiu, onIgnorou, onConviteCelula, onAceitouConvite,
   onFoiCelula, onVaiFicar, onMotivoChange, onSalvar, onBack, onReset,
 }: WizardProps) {
   const podeVoltar = wiz.history.length > 0;
@@ -402,6 +427,30 @@ function WizardAcompanhamento({
           onSim={() => onRetorno(true)}
           onNao={() => onRetorno(false)}
           labelNao="Não respondeu"
+        />
+      )}
+
+      {/* Não retornou: líder já insistiu mais de uma vez? */}
+      {wiz.step === 'q_insistiu' && (
+        <Pergunta
+          texto="O líder já tentou contato mais de uma vez?"
+          descricao="Após não obter resposta, o líder voltou a tentar entrar em contato?"
+          onSim={() => onInsistiu(true)}
+          onNao={() => onInsistiu(false)}
+          labelSim="Sim, já insistiu"
+          labelNao="Não, foi o primeiro contato"
+        />
+      )}
+
+      {/* Retornou mas depois ignorou? */}
+      {wiz.step === 'q_ignorou' && (
+        <Pergunta
+          texto="A pessoa continua respondendo?"
+          descricao="Após o contato inicial, ela manteve a conversa ou passou a ignorar as mensagens?"
+          onSim={() => onIgnorou(false)}
+          onNao={() => onIgnorou(true)}
+          labelSim="Continua respondendo"
+          labelNao="Passou a ignorar"
         />
       )}
 
