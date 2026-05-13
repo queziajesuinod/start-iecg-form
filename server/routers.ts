@@ -169,7 +169,23 @@ export const appRouter = router({
           );
         }
 
-        return Array.isArray(data) ? data : data ? [data] : [];
+        const allItems: any[] = Array.isArray(data) ? data : data ? [data] : [];
+
+        // Deduplicate: keep only the latest status per whatsapp
+        const latestByWhatsapp = new Map<string, any>();
+        for (const item of allItems) {
+          const key = item.whatsapp ?? item.id;
+          const existing = latestByWhatsapp.get(key);
+          if (!existing) {
+            latestByWhatsapp.set(key, item);
+          } else {
+            const existingTs = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+            const itemTs     = new Date(item.updatedAt    || item.createdAt    || 0).getTime();
+            if (itemTs > existingTs) latestByWhatsapp.set(key, item);
+          }
+        }
+
+        return Array.from(latestByWhatsapp.values());
       }),
 
     submit: publicProcedure
