@@ -43,6 +43,13 @@ const SCHOOL_OPTIONS = [
   'Liderança Avançada 3',
 ];
 
+const normalizeEscolas = (value: unknown): string[] => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string');
+  if (typeof value === 'string') return value.split(',').map((s) => s.trim()).filter(Boolean);
+  return [];
+};
+
 const normalizeEstadoCivil = (value?: string | null): string => {
   if (!value) return '';
   const lower = value.toLowerCase().trim();
@@ -381,7 +388,7 @@ export default function LiderCelula() {
           profissao: fallbackLeader.profissao || prev.profissao,
           batizado: fallbackLeader.batizado ?? prev.batizado,
           encontro: fallbackLeader.encontro ?? prev.encontro,
-          escolas: fallbackLeader.escolas ?? prev.escolas,
+          escolas: normalizeEscolas(fallbackLeader.escolas).length ? normalizeEscolas(fallbackLeader.escolas) : prev.escolas,
           escolaridade: normalizeEscolaridade(fallbackLeader.escolaridade) || prev.escolaridade,
           endereco: fallbackLeader.endereco || prev.endereco,
           numero: fallbackLeader.numero || prev.numero,
@@ -438,7 +445,7 @@ export default function LiderCelula() {
         profissao: effectiveLeader?.profissao || prev.profissao,
         batizado: effectiveLeader?.batizado ?? prev.batizado,
         encontro: effectiveLeader?.encontro ?? prev.encontro,
-        escolas: effectiveLeader?.escolas ?? prev.escolas,
+        escolas: normalizeEscolas(effectiveLeader?.escolas).length ? normalizeEscolas(effectiveLeader?.escolas) : prev.escolas,
         escolaridade: normalizeEscolaridade(effectiveLeader?.escolaridade) || prev.escolaridade,
         endereco: effectiveLeader?.endereco || prev.endereco,
         numero: effectiveLeader?.numero || prev.numero,
@@ -644,6 +651,7 @@ export default function LiderCelula() {
       const imageDataUrl = finalPhotoDataUrl ?? getCurrentLeaderPhotoDataUrl();
       const payload = {
         celulaId: leaderForm.celulaId || undefined,
+        perfilId: leaderResult?.id || undefined,
         lider: leaderForm.name || undefined,
         email_lider: leaderForm.email || undefined,
         cel_lider: cleanDigits(leaderForm.telefone) || undefined,
