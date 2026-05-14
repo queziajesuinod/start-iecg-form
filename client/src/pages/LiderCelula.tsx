@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useSearch } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -43,6 +42,21 @@ const SCHOOL_OPTIONS = [
   'Liderança Avançada 2',
   'Liderança Avançada 3',
 ];
+
+const normalizeEstadoCivil = (value?: string | null): string => {
+  if (!value) return '';
+  const lower = value.toLowerCase().trim();
+  const match = MARITAL_OPTIONS.find(
+    (o) => o.value === lower || o.label.toLowerCase().replace(/[()]/g, '') === lower.replace(/[()]/g, '')
+  );
+  return match?.value ?? '';
+};
+
+const normalizeEscolaridade = (value?: string | null): string => {
+  if (!value) return '';
+  const upper = value.toUpperCase().trim();
+  return EDUCATION_OPTIONS.includes(upper) ? upper : '';
+};
 
 const PHOTO_PREVIEW_SIZE = 160;
 const PHOTO_EXPORT_SIZE = PHOTO_PREVIEW_SIZE * 2;
@@ -269,9 +283,8 @@ const initialLeaderForm: LeaderForm = {
 };
 
 export default function LiderCelula() {
-  const search = useSearch();
   const urlContact = useMemo(() => {
-    const params = new URLSearchParams(search);
+    const params = new URLSearchParams(window.location.search);
     return params.get('email') || params.get('telefone') || '';
   }, []);
 
@@ -364,12 +377,12 @@ export default function LiderCelula() {
           telefone: formatPhone(fallbackLeader.telefone || ''),
           dataNascimento: fallbackLeader.data_nascimento || prev.dataNascimento,
           cpf: fallbackLeader.cpf || prev.cpf,
-          estadoCivil: fallbackLeader.estado_civil || prev.estadoCivil,
+          estadoCivil: normalizeEstadoCivil(fallbackLeader.estado_civil) || prev.estadoCivil,
           profissao: fallbackLeader.profissao || prev.profissao,
           batizado: fallbackLeader.batizado ?? prev.batizado,
           encontro: fallbackLeader.encontro ?? prev.encontro,
           escolas: fallbackLeader.escolas ?? prev.escolas,
-          escolaridade: fallbackLeader.escolaridade || prev.escolaridade,
+          escolaridade: normalizeEscolaridade(fallbackLeader.escolaridade) || prev.escolaridade,
           endereco: fallbackLeader.endereco || prev.endereco,
           numero: fallbackLeader.numero || prev.numero,
           bairro: fallbackLeader.bairro || prev.bairro,
@@ -421,12 +434,12 @@ export default function LiderCelula() {
         telefone: formatPhone(celula.cel_lider || effectiveLeader?.telefone || prev.telefone),
         dataNascimento: effectiveLeader?.data_nascimento || prev.dataNascimento,
         cpf: effectiveLeader?.cpf || prev.cpf,
-        estadoCivil: effectiveLeader?.estado_civil || prev.estadoCivil,
+        estadoCivil: normalizeEstadoCivil(effectiveLeader?.estado_civil) || prev.estadoCivil,
         profissao: effectiveLeader?.profissao || prev.profissao,
         batizado: effectiveLeader?.batizado ?? prev.batizado,
         encontro: effectiveLeader?.encontro ?? prev.encontro,
         escolas: effectiveLeader?.escolas ?? prev.escolas,
-        escolaridade: effectiveLeader?.escolaridade || prev.escolaridade,
+        escolaridade: normalizeEscolaridade(effectiveLeader?.escolaridade) || prev.escolaridade,
         endereco: effectiveLeader?.endereco || prev.endereco,
         numero: effectiveLeader?.numero || prev.numero,
         bairro: effectiveLeader?.bairro || prev.bairro,

@@ -15,18 +15,19 @@ interface CacheEntry<T> {
 }
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+const FORM_FIELDS_CACHE_TTL = 30 * 1000; // 30 segundos
 const cache = new Map<string, CacheEntry<any>>();
 
-function getCached<T>(key: string): T | null {
+function getCached<T>(key: string, ttl = CACHE_TTL): T | null {
   const entry = cache.get(key);
   if (!entry) return null;
-  
+
   const now = Date.now();
-  if (now - entry.timestamp > CACHE_TTL) {
+  if (now - entry.timestamp > ttl) {
     cache.delete(key);
     return null;
   }
-  
+
   console.log('[CACHE HIT]', key);
   return entry.data as T;
 }
@@ -296,17 +297,11 @@ export const listarLotesPublicos = async (
 // Listar campos do formulário
 export const listarCamposFormulario = async (eventId: string): Promise<FormField[]> => {
   const cacheKey = `fields-${eventId}`;
-  
-  // Tentar cache primeiro
-  const cached = getCached<FormField[]>(cacheKey);
-  if (cached) {
-    return cached;
-  }
-  
-  // Se não tem cache, buscar da API
+  const cached = getCached<FormField[]>(cacheKey, FORM_FIELDS_CACHE_TTL);
+  if (cached) return cached;
+
   const response = await api.get(`/api/public/events/${eventId}/form-fields`);
   setCache(cacheKey, response.data);
-  
   return response.data;
 };
 
