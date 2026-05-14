@@ -674,7 +674,7 @@ export default function LiderCelula() {
           }
           return updated;
         });
-        await fillFromCelula(response.celula, response.leader);
+        setSelectedCelula(response.celula);
       }
       toast.success('Líder atualizado com sucesso.');
     } catch (error) {
