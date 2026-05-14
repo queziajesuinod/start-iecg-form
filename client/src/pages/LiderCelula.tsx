@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearch } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -268,7 +269,13 @@ const initialLeaderForm: LeaderForm = {
 };
 
 export default function LiderCelula() {
-  const [searchContact, setSearchContact] = useState('');
+  const search = useSearch();
+  const urlContact = useMemo(() => {
+    const params = new URLSearchParams(search);
+    return params.get('email') || params.get('telefone') || '';
+  }, []);
+
+  const [searchContact, setSearchContact] = useState(urlContact);
   const [searching, setSearching] = useState(false);
   const [leaderResult, setLeaderResult] = useState<LeaderSummary | null>(null);
   const [celulas, setCelulas] = useState<LeaderCelulaRecord[]>([]);
@@ -388,6 +395,12 @@ export default function LiderCelula() {
       setSearching(false);
     }
   };
+
+  useEffect(() => {
+    if (urlContact) {
+      handleSearch();
+    }
+  }, []);
 
   const fillFromCelula = async (
     celula: LeaderCelulaRecord,
