@@ -260,6 +260,7 @@ type LeaderForm = {
   profissao: string;
   batizado: boolean;
   encontro: boolean;
+  isLiderCelula: boolean;
   escolas: string[];
   escolaridade: string;
   endereco: string;
@@ -288,6 +289,7 @@ const initialLeaderForm: LeaderForm = {
   profissao: '',
   batizado: false,
   encontro: false,
+  isLiderCelula: false,
   escolas: [],
   endereco: '',
   numero: '',
@@ -314,7 +316,7 @@ const hierarquiaFromLeader = (leader?: LeaderSummary | null) => ({
   pastorCampusNome: leader?.pastorCampus?.fullName || '',
 });
 
-export default function LiderCelula() {
+export default function CadastroMembro() {
   const urlContact = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('email') || params.get('telefone') || '';
@@ -322,6 +324,7 @@ export default function LiderCelula() {
 
   const [searchContact, setSearchContact] = useState(urlContact);
   const [searching, setSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [leaderResult, setLeaderResult] = useState<LeaderSummary | null>(null);
   const [celulas, setCelulas] = useState<LeaderCelulaRecord[]>([]);
   const [selectedCelula, setSelectedCelula] = useState<LeaderCelulaRecord | null>(null);
@@ -396,7 +399,7 @@ export default function LiderCelula() {
 
   const handleSearch = async () => {
     if (!hasContact) {
-      toast.error('Informe um e-mail ou telefone para buscar o líder.');
+      toast.error('Informe um e-mail ou telefone para buscar o membro.');
       return;
     }
       setSearching(true);
@@ -415,6 +418,7 @@ export default function LiderCelula() {
       });
       const leader = response.leader ?? null;
       const fetchedCelulas = Array.isArray(response.celulas) ? response.celulas : [];
+      setHasSearched(true);
       setCelulas(fetchedCelulas);
       const fallbackLeader =
         leader ?? fetchedCelulas.find((celula) => celula.leaderUser)?.leaderUser ?? null;
@@ -434,6 +438,7 @@ export default function LiderCelula() {
           profissao: fallbackLeader.profissao || prev.profissao,
           batizado: fallbackLeader.batizado ?? prev.batizado,
           encontro: fallbackLeader.encontro ?? prev.encontro,
+          isLiderCelula: fallbackLeader.is_lider_celula ?? prev.isLiderCelula,
           escolas: normalizeEscolas(fallbackLeader.escolas).length ? normalizeEscolas(fallbackLeader.escolas) : prev.escolas,
           escolaridade: normalizeEscolaridade(fallbackLeader.escolaridade) || prev.escolaridade,
           endereco: fallbackLeader.endereco || prev.endereco,
@@ -453,11 +458,11 @@ export default function LiderCelula() {
         setSpouseInfo(spouseDetails);
       }
       if (!leader && fetchedCelulas.length === 0) {
-        toast.error('Nenhum líder encontrado para o contato informado.');
+        toast.error('Nenhum membro encontrado para o contato informado.');
       }
     } catch (error) {
       console.error('Erro ao buscar líder:', error);
-      toast.error('Não foi possível carregar o líder. Tente novamente.');
+      toast.error('Não foi possível carregar o membro. Tente novamente.');
     } finally {
       setSearching(false);
     }
@@ -492,6 +497,7 @@ export default function LiderCelula() {
         profissao: effectiveLeader?.profissao || prev.profissao,
         batizado: effectiveLeader?.batizado ?? prev.batizado,
         encontro: effectiveLeader?.encontro ?? prev.encontro,
+        isLiderCelula: effectiveLeader?.is_lider_celula ?? true,
         escolas: normalizeEscolas(effectiveLeader?.escolas).length ? normalizeEscolas(effectiveLeader?.escolas) : prev.escolas,
         escolaridade: normalizeEscolaridade(effectiveLeader?.escolaridade) || prev.escolaridade,
         endereco: effectiveLeader?.endereco || prev.endereco,
@@ -684,7 +690,7 @@ export default function LiderCelula() {
       .filter((item) => !item.value.trim())
       .map((item) => item.label);
     if (missingFields.length > 0) {
-      toast.error(`Informe ${missingFields.join(', ')} para cadastrar o líder.`);
+      toast.error(`Informe ${missingFields.join(', ')} para cadastrar o membro.`);
       return;
     }
     setSavingLeader(true);
@@ -709,6 +715,7 @@ export default function LiderCelula() {
         profissao: leaderForm.profissao || undefined,
         batizado: leaderForm.batizado || undefined,
         encontro: leaderForm.encontro || undefined,
+        is_lider_celula: leaderForm.isLiderCelula,
         escolas: leaderForm.escolas.length ? leaderForm.escolas : undefined,
         endereco: leaderForm.endereco || undefined,
         numero: leaderForm.numero || undefined,
@@ -735,10 +742,10 @@ export default function LiderCelula() {
         });
         setSelectedCelula(response.celula);
       }
-      toast.success('Líder atualizado com sucesso.');
+      toast.success('Membro atualizado com sucesso.');
     } catch (error) {
       console.error('Erro ao salvar líder', error);
-      toast.error('Não foi possível atualizar o líder.');
+      toast.error('Não foi possível atualizar o membro.');
     } finally {
       setSavingLeader(false);
     }
@@ -746,7 +753,7 @@ export default function LiderCelula() {
 
   const handleLinkSpouse = async () => {
     if (!leaderResult?.id) {
-      toast.error('Busque um líder antes de vincular o cônjuge.');
+      toast.error('Busque um membro antes de vincular o cônjuge.');
       return;
     }
     const contactValue = spouseContact.trim();
@@ -784,7 +791,7 @@ export default function LiderCelula() {
 
   const handleUnlinkSpouse = async () => {
     if (!leaderResult?.id) {
-      toast.error('Busque um líder antes de desvincular o cônjuge.');
+      toast.error('Busque um membro antes de desvincular o cônjuge.');
       return;
     }
     setUnlinkingSpouse(true);
@@ -826,15 +833,15 @@ export default function LiderCelula() {
       <div className="container max-w-5xl mx-auto space-y-6 animate-fade-in-up">
         <header className="text-center space-y-2">
           <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground font-semibold">START IECG</p>
-          <h1 className="text-3xl font-bold text-foreground">Cadastro e atualização de líder de célula</h1>
+          <h1 className="text-3xl font-bold text-foreground">Cadastro geral de membro da igreja</h1>
           <p className="text-sm text-muted-foreground">
-            Atualize os dados do usuário, selecione a célula correta e, se estiverem casados, vincule o cônjuge.
+            Atualize os dados do membro, selecione a célula correta e, se estiverem casados, vincule o cônjuge.
           </p>
         </header>
 
         <Card>
           <CardHeader>
-            <CardTitle>Buscar líder por contato</CardTitle>
+            <CardTitle>Buscar membro por contato</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -850,7 +857,7 @@ export default function LiderCelula() {
             </div>
             <Button onClick={handleSearch} disabled={searching}>
               {searching ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
-              Buscar líder
+              Buscar membro
             </Button>
             <p className="text-xs text-muted-foreground">
               A busca usa o e-mail e/ou o telefone com DDD (somente dígitos). Se não localizar, preencha os dados
@@ -861,7 +868,7 @@ export default function LiderCelula() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Dados do usuário / líder</CardTitle>
+            <CardTitle>Dados do membro</CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="space-y-4">
@@ -886,7 +893,7 @@ export default function LiderCelula() {
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-xs uppercase tracking-[0.5em] text-muted-foreground">
-                      Foto do líder
+                      Foto do membro
                     </div>
                   )}
                 </div>
@@ -970,7 +977,7 @@ export default function LiderCelula() {
                 {leaderProfileImage && (
                   <img
                     src={leaderProfileImage}
-                    alt={`Foto do líder ${leaderResult?.name ?? ''}`.trim()}
+                    alt={`Foto do membro ${leaderResult?.name ?? ''}`.trim()}
                     className="h-12 w-12 rounded-full border border-border object-cover"
                   />
                 )}
@@ -1156,6 +1163,26 @@ export default function LiderCelula() {
               </div>
             </div>
 
+            <div className="rounded-xl border border-info/25 bg-info/10 p-4">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <Checkbox
+                  className="mt-0.5"
+                  checked={leaderForm.isLiderCelula}
+                  onCheckedChange={(checked) =>
+                    handleLeaderInput('isLiderCelula')(Boolean(checked))
+                  }
+                />
+                <span className="space-y-1">
+                  <span className="block text-sm font-semibold text-foreground">
+                    É líder de célula
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Marque para habilitar o cadastro e a gestão de células deste membro.
+                  </span>
+                </span>
+              </label>
+            </div>
+
           </CardContent>
         </Card>
 
@@ -1215,7 +1242,7 @@ export default function LiderCelula() {
                   onChange={(event) => handleLeaderInput('nomeEsposo')(event.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Preencha quando o cônjuge não estiver cadastrado como líder.
+                  Preencha quando o cônjuge não estiver cadastrado como membro.
                 </p>
               </div>
               {spouseInfo ? (
@@ -1255,7 +1282,7 @@ export default function LiderCelula() {
               ) : (
                 <>
                   <div className="space-y-2">
-                    <Label htmlFor="spouse-contact">E-mail ou telefone do cônjuge ( Caso seja Líder também) </Label>
+                    <Label htmlFor="spouse-contact">E-mail ou telefone do cônjuge (caso já seja membro também)</Label>
                   <Input
                     id="spouse-contact"
                     placeholder="nome@dominio.com ou (67) 99999-9999"
@@ -1296,61 +1323,88 @@ export default function LiderCelula() {
           className="w-full text-base"
         >
           {savingLeader ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
-          Atualizar dados do líder
+          Atualizar dados do membro
         </Button>
 
-        {displayCelulas.length > 0 ? (
+        {leaderForm.isLiderCelula ? (
           <Card>
             <CardHeader>
-              <CardTitle>Listagem de células</CardTitle>
+              <CardTitle>Células</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Como líder de célula, você pode cadastrar uma nova célula ou atualizar as existentes.
+              </p>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid gap-3 md:grid-cols-2">
-                {displayCelulas.map((celula) => (
-                  <div
-                    key={celula.id}
-                    role="button"
-                    tabIndex={0}
-                    className={`rounded-2xl border p-4 transition focus-visible:ring-2 focus-visible:ring-ring ${
-                      selectedCelula?.id === celula.id ? 'border-primary bg-primary/5' : 'border-border bg-card'
-                    }`}
-                    onClick={() => handleSelectCelula(celula)}
+            <CardContent className="space-y-4">
+              <div className="space-y-1">
+                <Button asChild variant="secondary" className="w-full sm:w-auto">
+                  <a
+                    href={
+                      phoneQuery
+                        ? `/celulas/atualizar?phone=${encodeURIComponent(phoneQuery)}`
+                        : undefined
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className={phoneQuery ? '' : 'pointer-events-none opacity-60'}
                   >
-                    <div className="flex items-center justify-between">
-                      <p className="font-semibold text-foreground">{celula.celula || 'Célula sem nome'}</p>
-                      <Badge variant="secondary">{celula.id.slice(0, 6)}</Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">Líder padrão: {celula.lider || '-'}</p>
-                    <p className="text-sm text-muted-foreground">E-mail: {celula.email_lider || '-'}</p>
-                    <p className="text-sm text-muted-foreground">
-                      Celular: {celula.cel_lider ? formatPhone(celula.cel_lider) : '-'}
-                    </p>
-                    <a
-                      href={phoneQuery ? `/celulas/atualizar?phone=${encodeURIComponent(phoneQuery)}` : undefined}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={`mt-3 inline-flex items-center justify-center rounded-full border px-3 py-1 text-sm font-semibold transition ${
-                        phoneQuery
-                          ? 'border-primary text-primary hover:bg-primary/10'
-                          : 'border-border text-muted-foreground pointer-events-none opacity-60'
-                      }`}
-                    >
-                      {phoneQuery ? 'Abrir Atualizar Célula' : 'Informe o celular do líder'}
-                    </a>
-                  </div>
-                ))}
+                    + Cadastrar nova célula
+                  </a>
+                </Button>
+                {!phoneQuery && (
+                  <p className="text-xs text-muted-foreground">
+                    Informe o telefone do membro para liberar o cadastro de célula.
+                  </p>
+                )}
               </div>
+
+              {displayCelulas.length > 0 ? (
+                <div className="space-y-3">
+                  <p className="text-sm font-medium text-foreground">Células deste líder</p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {displayCelulas.map((celula) => (
+                      <div
+                        key={celula.id}
+                        role="button"
+                        tabIndex={0}
+                        className={`rounded-2xl border p-4 transition focus-visible:ring-2 focus-visible:ring-ring ${
+                          selectedCelula?.id === celula.id ? 'border-primary bg-primary/5' : 'border-border bg-card'
+                        }`}
+                        onClick={() => handleSelectCelula(celula)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="font-semibold text-foreground">{celula.celula || 'Célula sem nome'}</p>
+                          <Badge variant="secondary">{celula.id.slice(0, 6)}</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">Líder padrão: {celula.lider || '-'}</p>
+                        <p className="text-sm text-muted-foreground">E-mail: {celula.email_lider || '-'}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Celular: {celula.cel_lider ? formatPhone(celula.cel_lider) : '-'}
+                        </p>
+                        <a
+                          href={phoneQuery ? `/celulas/atualizar?phone=${encodeURIComponent(phoneQuery)}` : undefined}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={`mt-3 inline-flex items-center justify-center rounded-full border px-3 py-1 text-sm font-semibold transition ${
+                            phoneQuery
+                              ? 'border-primary text-primary hover:bg-primary/10'
+                              : 'border-border text-muted-foreground pointer-events-none opacity-60'
+                          }`}
+                        >
+                          {phoneQuery ? 'Abrir Atualizar Célula' : 'Informe o celular do líder'}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : hasSearched ? (
+                <p className="text-sm text-muted-foreground">
+                  Este líder ainda não possui células cadastradas.
+                </p>
+              ) : null}
             </CardContent>
           </Card>
-        ) : (
-        <Card>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">Nenhuma célula ativa encontrada para o contato informado.</p>
-          </CardContent>
-        </Card>
-      )}
+        ) : null}
 
-     
       </div>
     </div>
   );

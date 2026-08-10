@@ -1,14 +1,14 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { lazy, Suspense } from "react";
-import { Route, Switch } from "wouter";
+import { Redirect, Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 const StartForm = lazy(() => import("./pages/StartForm"));
 const AtualizarCelula = lazy(() => import("./pages/AtualizarCelula"));
-const LiderCelula = lazy(() => import("./pages/LiderCelula"));
+const CadastroMembro = lazy(() => import("./pages/CadastroMembro"));
 const DirecionamentosPendentes = lazy(() => import("./pages/DirecionamentosPendentes"));
 const DiarioBordo = lazy(() => import("./pages/DiarioBordo"));
 const Links = lazy(() => import("./pages/Links"));
@@ -29,7 +29,11 @@ function Router() {
       <Switch>
         <Route path={"/"} component={StartForm} />
         <Route path={"/celulas/atualizar"} component={AtualizarCelula} />
-        <Route path={"/celulas/lider"} component={LiderCelula} />
+        <Route path={"/membros/cadastro"} component={CadastroMembro} />
+        {/* Redirect da rota antiga para não quebrar links já divulgados */}
+        <Route path={"/celulas/lider"}>
+          <Redirect to="/membros/cadastro" />
+        </Route>
         <Route path={"/direcionamentos/pendentes"} component={DirecionamentosPendentes} />
         <Route path={"/diario-bordo"} component={DiarioBordo} />
         <Route path={"/links"} component={Links} />
