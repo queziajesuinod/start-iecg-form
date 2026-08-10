@@ -1,4 +1,4 @@
-import api from './eventsApi';
+import api from './apiClient';
 
 export interface LeaderSummary {
   id: string;
@@ -32,6 +32,18 @@ export interface LeaderSummary {
   partner_id?: string;
   conjugeId?: string;
   conjuge_id?: string;
+  // Cadeia de cobertura (Liderança Apostólica → Pastor de Geração → Pastor de Campus)
+  liderancaApostolicaMemberId?: string | null;
+  liderancaApostolica?: MemberRef | null;
+  pastorGeracaoMemberId?: string | null;
+  pastorGeracao?: MemberRef | null;
+  pastorCampusMemberId?: string | null;
+  pastorCampus?: MemberRef | null;
+}
+
+export interface MemberRef {
+  id: string;
+  fullName: string;
 }
 
 export interface LeaderCelulaRecord {
@@ -82,6 +94,11 @@ export interface UpsertLeaderPayload {
   escolaridade?: string;
   nome_esposo?: string;
   image?: string;
+  // Cadeia de cobertura gravada no cadastro do membro (fonte da verdade;
+  // cascateia para as células onde ele é líder).
+  liderancaApostolicaMemberId?: string;
+  pastorGeracaoMemberId?: string;
+  pastorCampusMemberId?: string;
 }
 
 export interface UpsertLeaderResponse {

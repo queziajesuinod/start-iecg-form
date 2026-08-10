@@ -3,15 +3,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { lazy, Suspense } from "react";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 const StartForm = lazy(() => import("./pages/StartForm"));
-const EventList = lazy(() => import("./pages/EventList"));
-const EventDetails = lazy(() => import("./pages/EventDetails"));
-const RegistrationConfirmation = lazy(() => import("./pages/RegistrationConfirmation"));
-const RegistrationView = lazy(() => import("./pages/RegistrationView"));
-const PixConfirmation = lazy(() => import("./pages/PixConfirmation"));
-const Ticket = lazy(() => import("./pages/Ticket"));
 const AtualizarCelula = lazy(() => import("./pages/AtualizarCelula"));
 const LiderCelula = lazy(() => import("./pages/LiderCelula"));
 const DirecionamentosPendentes = lazy(() => import("./pages/DirecionamentosPendentes"));
@@ -33,12 +28,6 @@ function Router() {
     <Suspense fallback={<RouterFallback />}>
       <Switch>
         <Route path={"/"} component={StartForm} />
-        <Route path={"/eventos"} component={EventList} />
-        <Route path={"/eventos/:id"} component={EventDetails} />
-        <Route path={"/inscricao/:orderCode"} component={RegistrationConfirmation} />
-        <Route path={"/inscricao/:orderCode/visualizacao"} component={RegistrationView} />
-        <Route path={"/pix-confirmacao"} component={PixConfirmation} />
-        <Route path={"/ticket/:orderCode"} component={Ticket} />
         <Route path={"/celulas/atualizar"} component={AtualizarCelula} />
         <Route path={"/celulas/lider"} component={LiderCelula} />
         <Route path={"/direcionamentos/pendentes"} component={DirecionamentosPendentes} />
@@ -62,10 +51,11 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider
         defaultTheme="light"
-        // switchable
+        switchable
       >
         <TooltipProvider>
           <Toaster />
+          <ThemeToggle />
           <Router />
         </TooltipProvider>
       </ThemeProvider>

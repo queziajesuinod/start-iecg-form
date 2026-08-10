@@ -5,6 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MemberCombobox, type LiderancaOption } from "@/components/MemberCombobox";
 import { cn } from "@/lib/utils";
 import { geocodeAddress } from "@/lib/geocode";
 import { trpc } from "@/lib/trpc";
@@ -36,6 +37,9 @@ type CelulaForm = {
   horario: string;
   campusId?: string;
   pastor_campus?: string;
+  liderancaMemberId?: string;
+  pastorGeracaoMemberId?: string;
+  pastorCampusMemberId?: string;
   leaderId?: string;
   ativo?: boolean;
 };
@@ -63,6 +67,9 @@ const initialForm: CelulaForm = {
   horario: "",
   campusId: "",
   pastor_campus: "",
+  liderancaMemberId: "",
+  pastorGeracaoMemberId: "",
+  pastorCampusMemberId: "",
   ativo: true,
   leaderId: "",
 };
@@ -113,8 +120,16 @@ const parseCoordinate = (value?: string | number | null) => {
   return Number.isFinite(numeric) ? numeric : null;
 };
 
+// Nome da célula é gerado automaticamente: "Célula Apostólica {Rede} {Bairro}".
+const buildNomeCelula = (rede?: string, bairro?: string) =>
+  ["Célula Apostólica", (rede || "").trim(), (bairro || "").trim()]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+
 const buildCelulaPayload = (data: CelulaForm, dias: string[]) => ({
-  celula: data.celula || "",
+  celula: buildNomeCelula(data.rede, data.bairro) || data.celula || "",
   rede: data.rede || "",
   lider: data.lider || "",
   email_lider: data.email_lider || "",
@@ -131,6 +146,9 @@ const buildCelulaPayload = (data: CelulaForm, dias: string[]) => ({
   lideranca: data.lideranca || "",
   pastor_geracao: data.pastor_geracao || "",
   pastor_campus: (data as any).pastor_campus || "",
+  liderancaMemberId: (data as any).liderancaMemberId || undefined,
+  pastorGeracaoMemberId: (data as any).pastorGeracaoMemberId || undefined,
+  pastorCampusMemberId: (data as any).pastorCampusMemberId || undefined,
   dia: dias.join(", "),
   horario: data.horario || "",
   lat: parseCoordinate(data.lat),
@@ -243,6 +261,27 @@ export default function AtualizarCelula() {
 
   const atualizarCelula = trpc.celulas.atualizar.useMutation();
   const criarCelula = trpc.celulas.criar.useMutation();
+
+  const hierarquiaQuery = trpc.celulas.hierarquiaOptions.useQuery();
+  const liderancasOptions = useMemo<LiderancaOption[]>(() => {
+    const data = hierarquiaQuery.data?.liderancas;
+    return Array.isArray(data) ? (data as LiderancaOption[]) : [];
+  }, [hierarquiaQuery.data]);
+
+  // Ao escolher a Liderança Apostólica, o Pastor de Geração e o Pastor de Campus
+  // são preenchidos automaticamente a partir do cadastro dela (não editáveis).
+  const handleLiderancaChange = (value: string) => {
+    const selected = liderancasOptions.find(l => l.id === value);
+    setFormData(prev => ({
+      ...prev,
+      liderancaMemberId: value,
+      lideranca: selected?.fullName || "",
+      pastorGeracaoMemberId: selected?.pastorGeracaoMemberId || "",
+      pastor_geracao: selected?.pastorGeracao?.fullName || "",
+      pastorCampusMemberId: selected?.pastorCampusMemberId || "",
+      pastor_campus: selected?.pastorCampus?.fullName || "",
+    }));
+  };
 
   const geocodeAndFill = async (query: string, showToast = false) => {
     try {
@@ -482,6 +521,11 @@ export default function AtualizarCelula() {
       toast.error("Selecione um campus válido antes de salvar.");
       return;
     }
+    // O nome da célula é gerado a partir da rede e do bairro, então ambos são obrigatórios.
+    if (!(formData.rede || "").trim() || !(formData.bairro || "").trim()) {
+      toast.error("Informe a rede e o bairro para gerar o nome da célula.");
+      return;
+    }
 
     const leaderId = await ensureLeaderUserId();
     const baseForm = leaderId ? { ...formData, leaderId } : formData;
@@ -550,19 +594,19 @@ export default function AtualizarCelula() {
   const buttonLabel = isSaving ? (isEditing ? "Atualizando..." : "Criando...") : isEditing ? "Atualizar célula" : "Criar célula";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
+    <div className="min-h-dvh bg-gradient-to-b from-background to-muted/40">
       <div className="container py-10">
-        <div className="max-w-5xl mx-auto space-y-6">
+        <div className="max-w-5xl mx-auto space-y-6 animate-fade-in-up">
           <header className="text-center space-y-2">
-            <p className="text-sm uppercase tracking-[0.3em] text-blue-500 font-semibold">START IECG</p>
-            <h1 className="text-3xl md:text-4xl font-bold text-slate-900">Gestão de Células</h1>
-            <p className="text-slate-600">Busque pelo e-mail ou celular do líder e edite as informações necessárias.Caso não encontre a sua célula, faça o cadastro</p>
+            <p className="text-sm uppercase tracking-[0.3em] text-primary font-semibold">START IECG</p>
+            <h1 className="text-3xl md:text-4xl font-bold text-foreground">Gestão de Células</h1>
+            <p className="text-muted-foreground">Busque pelo e-mail ou celular do líder e edite as informações necessárias. Caso não encontre a sua célula, faça o cadastro</p>
           </header>
 
-          <Card className="p-6 shadow-xl border border-slate-200 bg-white">
+          <Card className="p-6 shadow-md border border-border">
             <div className="flex flex-col md:flex-row gap-3 items-start md:items-center">
               <div className="flex-1 w-full">
-                <Label htmlFor="contato" className="text-sm font-medium text-slate-700">
+                <Label htmlFor="contato" className="text-sm font-medium text-foreground">
                   E-mail ou celular do líder
                 </Label>
                 <Input
@@ -581,7 +625,7 @@ export default function AtualizarCelula() {
                 {buscarCelula.isFetching ? "Buscando..." : "Buscar"}
               </Button>
             </div>
-            <p className="text-xs text-slate-500 mt-2">
+            <p className="text-xs text-muted-foreground mt-2">
               A busca aceita o e-mail do líder ou o celular formatado com DDD. Após atualizar o endereço, a latitude e
               longitude são preenchidas automaticamente.
             </p>
@@ -589,10 +633,10 @@ export default function AtualizarCelula() {
 
 
           {exibindoSelecao && (
-            <Card className="p-6 shadow-xl border border-slate-200 bg-white">
+            <Card className="p-6 shadow-md border border-border">
               <div className="mb-4">
-                <p className="text-lg font-semibold text-slate-900">Escolha a célula correta</p>
-                <p className="text-sm text-slate-500">
+                <p className="text-lg font-semibold text-foreground">Escolha a célula correta</p>
+                <p className="text-sm text-muted-foreground">
                   Foram encontrados {resultadoMultiplo?.length ?? 0} registros para esse contato.
                 </p>
               </div>
@@ -600,28 +644,28 @@ export default function AtualizarCelula() {
                 {resultadoMultiplo?.map((celula, index) => (
                   <div
                     key={celula.id || index}
-                    className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                    className="flex flex-col gap-3 rounded-2xl border border-border bg-muted/50 p-4"
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <p className="text-lg font-semibold text-slate-900">
+                        <p className="text-lg font-semibold text-foreground">
                           {celula.celula || `Celula ${index + 1}`}
                         </p>
-                        <p className="text-sm text-slate-500">{celula.rede || "-"}</p>
+                        <p className="text-sm text-muted-foreground">{celula.rede || "-"}</p>
                       </div>
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          celula.ativo === false ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
+                          celula.ativo === false ? "bg-destructive/10 text-destructive border border-destructive/25" : "bg-success/10 text-success border border-success/25"
                         }`}
                       >
                         {celula.ativo === false ? "Inativa" : "Ativa"}
                       </span>
                     </div>
-                    <p className="text-sm text-slate-600">Lider: {celula.lider || "-"}</p>
-                    <p className="text-sm text-slate-600">
+                    <p className="text-sm text-muted-foreground">Lider: {celula.lider || "-"}</p>
+                    <p className="text-sm text-muted-foreground">
                       Celular: {celula.cel_lider ? formatPhone(celula.cel_lider) : "-"}
                     </p>
-                    <p className="text-sm text-slate-500">Campus: {celula.campus || "-"}</p>
+                    <p className="text-sm text-muted-foreground">Campus: {celula.campus || "-"}</p>
                     <div className="flex flex-col gap-2 pt-2 sm:flex-row">
                       <Button className="flex-1" onClick={() => handleSelecionarCelula(celula)}>
                         Atualizar
@@ -650,11 +694,16 @@ export default function AtualizarCelula() {
           )}
 
           {!exibindoSelecao && (
-            <Card className="p-6 shadow-xl border border-slate-200 bg-white">
+            <Card className="p-6 shadow-md border border-border">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="celula">Nome da célula</Label>
-                <Input id="celula" value={formData.celula} onChange={handleInputChange("celula")} />
+                <Label>Nome da célula</Label>
+                <div className="flex h-10 items-center rounded-md border border-border bg-muted/50 px-3 text-sm text-muted-foreground">
+                  {buildNomeCelula(formData.rede, formData.bairro) || "Preencha rede e bairro"}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Gerado automaticamente a partir da rede e do bairro.
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -766,12 +815,35 @@ export default function AtualizarCelula() {
                 <Input id="estado" value={formData.estado} onChange={handleInputChange("estado")} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="pastor_geracao">Pastor de geração</Label>
-                <Input
-                  id="pastor_geracao"
-                  value={formData.pastor_geracao}
-                  onChange={handleInputChange("pastor_geracao")}
+                <Label htmlFor="liderancaMemberId">Liderança Apostólica</Label>
+                <MemberCombobox
+                  id="liderancaMemberId"
+                  options={liderancasOptions}
+                  value={formData.liderancaMemberId}
+                  onSelect={handleLiderancaChange}
+                  placeholder="Selecione a liderança"
+                  searchPlaceholder="Buscar liderança pelo nome..."
+                  emptyText={hierarquiaQuery.isError ? "Erro ao carregar." : "Nenhuma liderança encontrada."}
+                  loading={hierarquiaQuery.isLoading}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Ao selecionar a liderança, o Pastor de Geração e o Pastor de Campus são preenchidos
+                  automaticamente.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Pastor de geração</Label>
+                <div className="flex h-10 items-center rounded-md border border-border bg-muted/50 px-3 text-sm text-muted-foreground">
+                  {formData.pastor_geracao || "Preenchido ao selecionar a liderança"}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Pastor de campus</Label>
+                <div className="flex h-10 items-center rounded-md border border-border bg-muted/50 px-3 text-sm text-muted-foreground">
+                  {formData.pastor_campus || "Preenchido ao selecionar a liderança"}
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -781,12 +853,12 @@ export default function AtualizarCelula() {
                     <label
                       key={dia}
                       className={cn(
-                        "flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 cursor-pointer",
-                        diasSelecionados.includes(dia) && "border-blue-500 bg-blue-50"
+                        "flex items-center gap-2 rounded-md border border-border px-3 py-2 cursor-pointer",
+                        diasSelecionados.includes(dia) && "border-primary bg-primary/5"
                       )}
                     >
                       <Checkbox checked={diasSelecionados.includes(dia)} onCheckedChange={() => toggleDia(dia)} />
-                      <span className="text-sm text-slate-700">{dia}</span>
+                      <span className="text-sm text-foreground">{dia}</span>
                     </label>
                   ))}
                 </div>

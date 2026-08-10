@@ -19,21 +19,21 @@ const copyToClipboard = async (text: string, label: string) => {
 
 export default function Links() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
+    <div className="min-h-dvh bg-gradient-to-b from-background to-muted/40">
       <div className="container py-10">
-        <div className="max-w-3xl mx-auto space-y-6">
+        <div className="max-w-3xl mx-auto space-y-6 animate-fade-in-up">
           <header className="text-center space-y-2">
-            <h1 className="text-3xl md:text-4xl font-bold text-slate-900">IECG ONLINE</h1>
-            <p className="text-slate-600">
+            <h1 className="text-3xl md:text-4xl font-bold text-primary">IECG ONLINE</h1>
+            <p className="text-muted-foreground">
               Links rápidos - Igreja Evangélica Comunidade Global.
             </p>
           </header>
 
-          <Card className="p-6 shadow-xl border border-slate-200 bg-white">
+          <Card className="p-6 shadow-md">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-semibold text-slate-900">START IECG</h2>
-                <p className="text-sm text-slate-600">Orientando um novo começo - Queremos te conhecer melhor.</p>
+                <h2 className="text-xl font-semibold text-foreground">START IECG</h2>
+                <p className="text-sm text-muted-foreground">Orientando um novo começo - Queremos te conhecer melhor.</p>
               </div>
               <Button asChild>
                 <a href="/">Se inscrever</a>
@@ -41,34 +41,34 @@ export default function Links() {
             </div>
           </Card>
 
-          <Card className="p-6 shadow-xl border border-slate-200 bg-white space-y-4">
+          <Card className="p-6 shadow-md space-y-4">
             <div>
-              <h2 className="text-xl font-semibold text-slate-900">PIX oficiais</h2>
-              <p className="text-sm text-slate-600">Igreja Evangélica Comunidade Global</p>
+              <h2 className="text-xl font-semibold text-foreground">PIX oficiais</h2>
+              <p className="text-sm text-muted-foreground">Igreja Evangélica Comunidade Global</p>
             </div>
             <div className="space-y-3">
               <div className="space-y-1">
-                <p className="text-sm font-medium text-slate-700">Dízimos e Ofertas (CNPJ)</p>
+                <p className="text-sm font-medium text-foreground">Dízimos e Ofertas (CNPJ)</p>
                 <div className="flex flex-col md:flex-row gap-2">
-                  <Input readOnly value={PIX_DIZIMOS} className="bg-slate-50" />
+                  <Input readOnly value={PIX_DIZIMOS} className="bg-muted/50" />
                   <Button variant="outline" onClick={() => copyToClipboard(PIX_DIZIMOS, "PIX Dízimos e Ofertas")}>
                     Copiar
                   </Button>
                 </div>
               </div>
               <div className="space-y-1">
-                <p className="text-sm font-medium text-slate-700">Primícias (E-mail)</p>
+                <p className="text-sm font-medium text-foreground">Primícias (E-mail)</p>
                 <div className="flex flex-col md:flex-row gap-2">
-                  <Input readOnly value={PIX_PRIMICIAS} className="bg-slate-50" />
+                  <Input readOnly value={PIX_PRIMICIAS} className="bg-muted/50" />
                   <Button variant="outline" onClick={() => copyToClipboard(PIX_PRIMICIAS, "PIX Primícias")}>
                     Copiar
                   </Button>
                 </div>
               </div>
               <div className="space-y-1">
-                <p className="text-sm font-medium text-slate-700">Ofertas para o Novo Templo</p>
+                <p className="text-sm font-medium text-foreground">Ofertas para o Novo Templo</p>
                 <div className="flex flex-col md:flex-row gap-2">
-                  <Input readOnly value={PIX_NOVO_TEMPLO} className="bg-slate-50" />
+                  <Input readOnly value={PIX_NOVO_TEMPLO} className="bg-muted/50" />
                   <Button variant="outline" onClick={() => copyToClipboard(PIX_NOVO_TEMPLO, "PIX Novo Templo")}>
                     Copiar
                   </Button>
@@ -77,11 +77,11 @@ export default function Links() {
             </div>
           </Card>
 
-          <Card className="p-6 shadow-xl border border-slate-200 bg-white">
+          <Card className="p-6 shadow-md">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-semibold text-slate-900">Ofertas online</h2>
-                <p className="text-sm text-slate-600">Acesse diretamente o portal de ofertas.</p>
+                <h2 className="text-xl font-semibold text-foreground">Ofertas online</h2>
+                <p className="text-sm text-muted-foreground">Acesse diretamente o portal de ofertas.</p>
               </div>
               <Button asChild variant="secondary">
                 <a href="https://ofertas.iecg.com.br/" target="_blank" rel="noreferrer">

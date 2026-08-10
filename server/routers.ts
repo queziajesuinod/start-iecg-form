@@ -140,6 +140,45 @@ export const appRouter = router({
         return data;
       }),
 
+    enviarFeedback: publicProcedure
+      .input(
+        z.object({
+          id: z.string().min(1),
+          contatoRealizado: z.boolean(),
+          numeroInvalido: z.boolean().optional(),
+          houveResposta: z.boolean().optional(),
+          foiCelula: z.boolean().optional(),
+          vaiContinuar: z.boolean().optional(),
+          vaiNaProxima: z.boolean().optional(),
+          conviteFeito: z.boolean().optional(),
+          conviteAceito: z.boolean().optional(),
+          observacao: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const { id, ...feedback } = input;
+        const response = await fetch(
+          `${PUBLIC_API_BASE}/direcionamentos/${id}/feedback`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(feedback),
+          }
+        );
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(
+            (data as any)?.message ||
+            (data as any)?.erro ||
+            `Erro ao registrar feedback (${response.status})`
+          );
+        }
+
+        return data;
+      }),
+
     buscarPendentes: publicProcedure
       .input(
         z.object({
@@ -203,6 +242,10 @@ export const appRouter = router({
           bairro_proximo: z.array(z.string()),
           dias_semana: z.array(z.string()).default([]),
           direcionar_celula: z.boolean(),
+          celula_casal: z.boolean().default(false),
+          conjuge_nome: z.string().optional(),
+          conjuge_whatsapp: z.string().optional(),
+          conjuge_idade: z.number().optional(),
           observacao: z.string().optional(),
           campus_iecg: z.string(),
           status: z.string(),
@@ -322,6 +365,10 @@ export const appRouter = router({
           lideranca: z.string().optional(),
           pastor_geracao: z.string().optional(),
           pastor_campus: z.string().optional(),
+          liderancaMemberId: z.string().optional(),
+          pastorGeracaoMemberId: z.string().optional(),
+          pastorCampusMemberId: z.string().optional(),
+          leaderId: z.string().optional(),
           dia: z.string().optional(),
           lat: z.number().nullable().optional(),
           lon: z.number().nullable().optional(),
@@ -359,6 +406,37 @@ export const appRouter = router({
           throw new Error(error.message || "Erro ao criar célula.");
         }
       }),
+    hierarquiaOptions: publicProcedure.query(async () => {
+      try {
+        const response = await fetch(`${PUBLIC_API_BASE}/celulas/hierarquia-options`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          console.warn(
+            "Falha ao carregar opções de hierarquia do portal:",
+            response.status
+          );
+          return { liderancas: [], pastoresGeracao: [], pastoresCampus: [] };
+        }
+
+        const data = await response.json().catch(() => null);
+        if (!data || typeof data !== "object") {
+          return { liderancas: [], pastoresGeracao: [], pastoresCampus: [] };
+        }
+        return {
+          liderancas: Array.isArray(data.liderancas) ? data.liderancas : [],
+          pastoresGeracao: Array.isArray(data.pastoresGeracao) ? data.pastoresGeracao : [],
+          pastoresCampus: Array.isArray(data.pastoresCampus) ? data.pastoresCampus : [],
+        };
+      } catch (error: any) {
+        console.error("Erro ao carregar opções de hierarquia:", error);
+        return { liderancas: [], pastoresGeracao: [], pastoresCampus: [] };
+      }
+    }),
     listarCampi: publicProcedure.query(async () => {
       try {
         const response = await fetch(`${PUBLIC_API_BASE}/campus`, {

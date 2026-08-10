@@ -50,6 +50,16 @@ const REDE_OPTIONS = [
   },
 ];
 
+// Pares de rede para célula de casal: ao escolher uma, o cônjuge vai para a rede-espelho.
+const REDE_CASAL_PAR: Record<string, string> = {
+  "MULHERES IECG": "HOMENS IECG",
+  "HOMENS IECG": "MULHERES IECG",
+  "JUVENTUDE RELEVANTE MOÇAS": "JUVENTUDE RELEVANTE RAPAZES",
+  "JUVENTUDE RELEVANTE RAPAZES": "JUVENTUDE RELEVANTE MOÇAS",
+};
+
+const redeParDeCasal = (rede?: string) => (rede ? REDE_CASAL_PAR[rede] : undefined);
+
 const DIAS_PREFERENCIA = [
   { value: "Segunda", disabled: false },
   { value: "Terça", disabled: false },
@@ -84,6 +94,10 @@ const formSchema = z
     rede: z.string().min(1, "Rede é obrigatória"),
     decisao: z.string().min(1, "Decisão é obrigatória"),
     direcionar_celula: z.boolean().default(false),
+    celula_casal: z.boolean().default(false),
+    conjuge_nome: z.string().optional(),
+    conjuge_whatsapp: z.string().optional(),
+    conjuge_idade: z.coerce.number().max(150).optional(),
     cep_apelo: z.string().optional(),
     bairro_apelo: z.string().optional(),
     cidade_apelo: z.string().optional(),
@@ -109,6 +123,30 @@ const formSchema = z
           path: ["bairro_apelo"],
           message: "Bairro é obrigatório para encaminhamento",
         });
+      }
+
+      if (data.celula_casal) {
+        if (!(data.conjuge_nome || "").trim() || (data.conjuge_nome || "").trim().length < 3) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["conjuge_nome"],
+            message: "Nome do cônjuge é obrigatório",
+          });
+        }
+        if ((data.conjuge_whatsapp || "").replace(/\D/g, "").length < 10) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["conjuge_whatsapp"],
+            message: "WhatsApp do cônjuge é obrigatório",
+          });
+        }
+        if (!data.conjuge_idade || data.conjuge_idade < 1) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["conjuge_idade"],
+            message: "Idade do cônjuge é obrigatória",
+          });
+        }
       }
     }
   });
@@ -140,6 +178,10 @@ export default function StartForm() {
       rede: "",
       decisao: "",
       direcionar_celula: false,
+      celula_casal: false,
+      conjuge_nome: "",
+      conjuge_whatsapp: "",
+      conjuge_idade: undefined,
       cep_apelo: "",
       bairro_apelo: "",
       cidade_apelo: "Campo Grande",
@@ -152,8 +194,11 @@ export default function StartForm() {
 
   const decisaoSelecionada = watch("decisao");
   const direcionarCelula = watch("direcionar_celula");
+  const celulaCasal = watch("celula_casal");
+  const redeSelecionada = watch("rede");
   const bairrosProximos = watch("bairro_proximo");
   const isEncaminhamento = decisaoSelecionada === "encaminhamento_celula";
+  const redeParConjuge = redeParDeCasal(redeSelecionada);
   const submitLogPrefix = "[StartForm][direcionamentos.submit]";
 
   useEffect(() => {
@@ -161,6 +206,13 @@ export default function StartForm() {
       setValue("direcionar_celula", true);
     }
   }, [isEncaminhamento, direcionarCelula, setValue]);
+
+  // Se a rede escolhida não tem par de casal, desmarca a opção para não enviar inconsistente.
+  useEffect(() => {
+    if (celulaCasal && !redeParConjuge) {
+      setValue("celula_casal", false);
+    }
+  }, [celulaCasal, redeParConjuge, setValue]);
 
   const submitMutation = trpc.direcionamentos.submit.useMutation({
     onMutate: variables => {
@@ -241,9 +293,17 @@ export default function StartForm() {
       bairro_proximo: data.bairro_proximo || [],
       dias_semana: data.dias_semana || [],
       direcionar_celula: data.direcionar_celula,
+      celula_casal: data.direcionar_celula ? data.celula_casal : false,
       campus_iecg: data.campus,
       status,
       observacao: data.observacao || "",
+      ...(data.direcionar_celula && data.celula_casal
+        ? {
+            conjuge_nome: (data.conjuge_nome || "").trim(),
+            conjuge_whatsapp: (data.conjuge_whatsapp || "").replace(/\D/g, ""),
+            conjuge_idade: data.conjuge_idade,
+          }
+        : {}),
       ...(data.direcionar_celula
         ? {
             cep_apelo: cepApelo,
@@ -288,6 +348,11 @@ export default function StartForm() {
   const handleWhatsappChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatWhatsapp(e.target.value);
     setValue("whatsapp", formatted);
+  };
+
+  const handleConjugeWhatsappChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatWhatsapp(e.target.value);
+    setValue("conjuge_whatsapp", formatted, { shouldValidate: true });
   };
 
   type CepAddressData = {
@@ -444,18 +509,18 @@ export default function StartForm() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
+    <div className="min-h-dvh bg-gradient-to-b from-background to-muted/40 flex flex-col">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-blue-100">
+      <header className="bg-card/80 backdrop-blur-sm border-b border-border sticky top-0 z-30">
         <div className="container py-6 flex flex-col items-center gap-3">
-          <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl flex items-center justify-center shadow-lg animate-fade-in">
-            <Play className="w-8 h-8 text-white fill-white" />
+          <div className="w-16 h-16 bg-gradient-to-br from-primary to-primary/75 rounded-2xl flex items-center justify-center shadow-lg animate-fade-in">
+            <Play className="w-8 h-8 text-primary-foreground fill-primary-foreground" />
           </div>
           <div className="text-center">
-            <h1 className="text-3xl md:text-4xl font-bold text-blue-900 tracking-tight">
+            <h1 className="text-3xl md:text-4xl font-bold text-primary tracking-tight">
               START IECG
             </h1>
-            <p className="text-gray-600 text-sm md:text-base mt-1">
+            <p className="text-muted-foreground text-sm md:text-base mt-1">
               Orientando um novo começo
             </p>
           </div>
@@ -465,14 +530,14 @@ export default function StartForm() {
       {/* Success Message */}
       {showSuccess && (
         <div className="container mt-6 animate-fade-in-up">
-          <div className="bg-gradient-to-r from-green-50 to-green-100 border border-green-300 rounded-xl p-6 shadow-lg">
+          <div className="border border-success/30 bg-success/10 rounded-xl p-6 shadow-md">
             <div className="flex items-center gap-3 mb-2">
-              <CheckCircle2 className="w-6 h-6 text-green-600" />
-              <h3 className="font-semibold text-green-900 text-lg">
+              <CheckCircle2 className="w-6 h-6 text-success" />
+              <h3 className="font-semibold text-success text-lg">
                 Inscrição realizada com sucesso!
               </h3>
             </div>
-            <p className="text-green-800 text-sm">
+            <p className="text-foreground/80 text-sm">
               Obrigado por se inscrever. Em breve entraremos em contato através
               do WhatsApp informado.
             </p>
@@ -482,10 +547,10 @@ export default function StartForm() {
 
       {/* Main Form */}
       <main className="container flex-1 py-8">
-        <Card className="max-w-2xl mx-auto p-6 md:p-8 shadow-2xl border border-gray-200 bg-white animate-fade-in-up">
+        <Card className="max-w-2xl mx-auto p-6 md:p-8 shadow-lg animate-fade-in-up">
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">START</h2>
-            <p className="text-sm text-gray-600 uppercase tracking-wide">
+            <h2 className="text-2xl font-bold text-foreground mb-1">START</h2>
+            <p className="text-sm text-muted-foreground uppercase tracking-wide">
               Seja bem-vindo, aqui é um lugar de novos começos!
             </p>
           </div>
@@ -494,7 +559,7 @@ export default function StartForm() {
             {/* Campus */}
             <div className="space-y-2">
               <Label htmlFor="campus">
-                Campus IECG <span className="text-red-500">*</span>
+                Campus IECG <span className="text-destructive">*</span>
               </Label>
               <Controller
                 name="campus"
@@ -503,7 +568,7 @@ export default function StartForm() {
                   <Select onValueChange={field.onChange} value={field.value}>
                     <SelectTrigger
                       id="campus"
-                      className="w-full border-2 border-gray-300 focus:border-blue-600"
+                      className="w-full"
                     >
                       <SelectValue placeholder="Escolher" />
                     </SelectTrigger>
@@ -518,7 +583,7 @@ export default function StartForm() {
                 )}
               />
               {errors.campus && (
-                <p className="text-sm text-red-600">{errors.campus.message}</p>
+                <p className="text-sm text-destructive">{errors.campus.message}</p>
               )}
             </div>
 
@@ -526,33 +591,31 @@ export default function StartForm() {
             <div className="space-y-2">
               <Label htmlFor="nome">
                 Queremos te conhecer. Insira seu nome completo:{" "}
-                <span className="text-red-500">*</span>
+                <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="nome"
                 placeholder="Seu nome completo"
-                className="border-2 border-gray-300 focus:border-blue-600"
-                {...register("nome")}
+                               {...register("nome")}
               />
               {errors.nome && (
-                <p className="text-sm text-red-600">{errors.nome.message}</p>
+                <p className="text-sm text-destructive">{errors.nome.message}</p>
               )}
             </div>
 
             {/* Idade */}
             <div className="space-y-2">
               <Label htmlFor="idade">
-                Idade: <span className="text-red-500">*</span>
+                Idade: <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="idade"
                 type="number"
                 placeholder="Sua idade"
-                className="border-2 border-gray-300 focus:border-blue-600"
-                {...register("idade")}
+                               {...register("idade")}
               />
               {errors.idade && (
-                <p className="text-sm text-red-600">{errors.idade.message}</p>
+                <p className="text-sm text-destructive">{errors.idade.message}</p>
               )}
             </div>
 
@@ -560,18 +623,17 @@ export default function StartForm() {
             <div className="space-y-2">
               <Label htmlFor="whatsapp">
                 WhatsApp | Número de Telefone:{" "}
-                <span className="text-red-500">*</span>
+                <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="whatsapp"
                 type="tel"
                 placeholder="(99) 99999-9999"
-                className="border-2 border-gray-300 focus:border-blue-600"
-                {...register("whatsapp")}
+                               {...register("whatsapp")}
                 onChange={handleWhatsappChange}
               />
               {errors.whatsapp && (
-                <p className="text-sm text-red-600">
+                <p className="text-sm text-destructive">
                   {errors.whatsapp.message}
                 </p>
               )}
@@ -580,7 +642,7 @@ export default function StartForm() {
             {/* Rede */}
             <div className="space-y-2">
               <Label htmlFor="rede">
-                Rede <span className="text-red-500">*</span>
+                Rede <span className="text-destructive">*</span>
               </Label>
               <Controller
                 name="rede"
@@ -589,7 +651,7 @@ export default function StartForm() {
                   <Select onValueChange={field.onChange} value={field.value}>
                     <SelectTrigger
                       id="rede"
-                      className="w-full border-2 border-gray-300 focus:border-blue-600"
+                      className="w-full"
                     >
                       <SelectValue placeholder="Selecione sua rede" />
                     </SelectTrigger>
@@ -604,14 +666,14 @@ export default function StartForm() {
                 )}
               />
               {errors.rede && (
-                <p className="text-sm text-red-600">{errors.rede.message}</p>
+                <p className="text-sm text-destructive">{errors.rede.message}</p>
               )}
             </div>
 
             {/* Decisão */}
             <div className="space-y-2">
               <Label htmlFor="decisao">
-                Hoje, minha decisão foi: <span className="text-red-500">*</span>
+                Hoje, minha decisão foi: <span className="text-destructive">*</span>
               </Label>
               <Controller
                 name="decisao"
@@ -620,7 +682,7 @@ export default function StartForm() {
                   <Select onValueChange={field.onChange} value={field.value}>
                     <SelectTrigger
                       id="decisao"
-                      className="w-full border-2 border-gray-300 focus:border-blue-600"
+                      className="w-full"
                     >
                       <SelectValue placeholder="Selecione uma opção" />
                     </SelectTrigger>
@@ -635,12 +697,12 @@ export default function StartForm() {
                 )}
               />
               {errors.decisao && (
-                <p className="text-sm text-red-600">{errors.decisao.message}</p>
+                <p className="text-sm text-destructive">{errors.decisao.message}</p>
               )}
             </div>
 
             {/* Checkbox Direcionar Célula */}
-            <div className="flex items-start space-x-3 bg-blue-50 p-4 rounded-lg border border-blue-200">
+            <div className="flex items-start space-x-3 bg-info/10 p-4 rounded-xl border border-info/25">
               <Controller
                 name="direcionar_celula"
                 control={control}
@@ -663,7 +725,7 @@ export default function StartForm() {
                 >
                   Desejo ser direcionado(a) para uma célula
                 </Label>
-                <p className="text-xs text-gray-600">
+                <p className="text-xs text-muted-foreground">
                   Marque esta opção se deseja participar de uma célula próxima a
                   você
                 </p>
@@ -672,8 +734,105 @@ export default function StartForm() {
 
             {/* Campos condicionais de localização */}
             {direcionarCelula && (
-              <div className="space-y-6 bg-gray-50 p-4 rounded-lg border border-gray-200 animate-fade-in-up">
-                <p className="text-sm font-medium text-gray-700">
+              <div className="space-y-6 bg-muted/40 p-4 rounded-xl border border-border animate-fade-in-up">
+                {/* Checkbox Célula de Casal — só quando a rede escolhida tem par */}
+                {redeParConjuge && (
+                  <div className="space-y-4 bg-primary/5 p-4 rounded-xl border border-primary/20">
+                    <div className="flex items-start space-x-3">
+                      <Controller
+                        name="celula_casal"
+                        control={control}
+                        render={({ field }) => (
+                          <Checkbox
+                            id="celula_casal"
+                            checked={field.value}
+                            onCheckedChange={checked => field.onChange(checked)}
+                          />
+                        )}
+                      />
+                      <div className="space-y-1">
+                        <Label
+                          htmlFor="celula_casal"
+                          className="text-sm font-medium leading-none cursor-pointer"
+                        >
+                          Desejo uma célula de casal
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          Você e seu cônjuge serão cadastrados juntos. Seu cônjuge será
+                          direcionado para a rede{" "}
+                          <span className="font-semibold">{redeParConjuge}</span>.
+                        </p>
+                      </div>
+                    </div>
+
+                    {celulaCasal && (
+                      <div className="space-y-4 pt-1">
+                        <p className="text-sm font-medium text-foreground">
+                          Dados do cônjuge
+                        </p>
+
+                        {/* Nome do cônjuge */}
+                        <div className="space-y-2">
+                          <Label htmlFor="conjuge_nome">
+                            Nome do cônjuge <span className="text-destructive">*</span>
+                          </Label>
+                          <Input
+                            id="conjuge_nome"
+                            type="text"
+                            placeholder="Nome completo"
+                                                       {...register("conjuge_nome")}
+                          />
+                          {errors.conjuge_nome && (
+                            <p className="text-sm text-destructive">
+                              {errors.conjuge_nome.message}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* WhatsApp do cônjuge */}
+                        <div className="space-y-2">
+                          <Label htmlFor="conjuge_whatsapp">
+                            WhatsApp do cônjuge <span className="text-destructive">*</span>
+                          </Label>
+                          <Input
+                            id="conjuge_whatsapp"
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="(00) 00000-0000"
+                                                       {...register("conjuge_whatsapp")}
+                            onChange={handleConjugeWhatsappChange}
+                          />
+                          {errors.conjuge_whatsapp && (
+                            <p className="text-sm text-destructive">
+                              {errors.conjuge_whatsapp.message}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Idade do cônjuge */}
+                        <div className="space-y-2">
+                          <Label htmlFor="conjuge_idade">
+                            Idade do cônjuge <span className="text-destructive">*</span>
+                          </Label>
+                          <Input
+                            id="conjuge_idade"
+                            type="number"
+                            inputMode="numeric"
+                            placeholder="Idade"
+                                                       {...register("conjuge_idade")}
+                          />
+                          {errors.conjuge_idade && (
+                            <p className="text-sm text-destructive">
+                              {errors.conjuge_idade.message}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <p className="text-sm font-medium text-foreground">
                   Informações de localização
                 </p>
 
@@ -682,7 +841,7 @@ export default function StartForm() {
                   <Label htmlFor="cep_apelo">
                     CEP
                     {direcionarCelula && (
-                      <span className="text-red-500"> *</span>
+                      <span className="text-destructive"> *</span>
                     )}
                   </Label>
                   <Input
@@ -690,17 +849,16 @@ export default function StartForm() {
                     type="text"
                     inputMode="numeric"
                     placeholder="00000-000"
-                    className="border-2 border-gray-300 focus:border-blue-600"
-                    {...register("cep_apelo")}
+                                       {...register("cep_apelo")}
                     onChange={handleCepChange}
                   />
                   {errors.cep_apelo && (
-                    <p className="text-sm text-red-600">
+                    <p className="text-sm text-destructive">
                       {errors.cep_apelo.message}
                     </p>
                   )}
                   {cepLookupLoading && (
-                    <p className="text-xs text-gray-500">Buscando endereco pelo CEP...</p>
+                    <p className="text-xs text-muted-foreground">Buscando endereco pelo CEP...</p>
                   )}
                 </div>
 
@@ -710,8 +868,7 @@ export default function StartForm() {
                   <Input
                     id="bairro_apelo"
                     placeholder="Preenchido automaticamente pelo CEP"
-                    className="border-2 border-gray-300 focus:border-blue-600"
-                    {...register("bairro_apelo")}
+                                       {...register("bairro_apelo")}
                   />
                 </div>
 
@@ -721,8 +878,7 @@ export default function StartForm() {
                   <Input
                     id="cidade_apelo"
                     placeholder="Preenchido automaticamente pelo CEP"
-                    className="border-2 border-gray-300 focus:border-blue-600"
-                    {...register("cidade_apelo")}
+                                       {...register("cidade_apelo")}
                   />
                 </div>
 
@@ -732,8 +888,7 @@ export default function StartForm() {
                   <Input
                     id="estado_apelo"
                     placeholder="Preenchido automaticamente pelo CEP"
-                    className="border-2 border-gray-300 focus:border-blue-600"
-                    {...register("estado_apelo")}
+                                       {...register("estado_apelo")}
                   />
                 </div>
 
@@ -746,8 +901,7 @@ export default function StartForm() {
                     <Input
                       id="bairro_temp"
                       placeholder="Digite um bairro"
-                      className="border-2 border-gray-300 focus:border-blue-600"
-                      value={bairroTemp}
+                                           value={bairroTemp}
                       onChange={e => setBairroTemp(e.target.value)}
                       onKeyDown={e => {
                         if (e.key === "Enter") {
@@ -770,13 +924,13 @@ export default function StartForm() {
                       {bairrosProximos.map(bairro => (
                         <div
                           key={bairro}
-                          className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm"
+                          className="inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 px-3 py-1 rounded-full text-sm font-medium"
                         >
                           <span>{bairro}</span>
                           <button
                             type="button"
                             onClick={() => removeBairroProximo(bairro)}
-                            className="hover:bg-blue-200 rounded-full p-0.5 transition-colors"
+                            className="hover:bg-primary/20 rounded-full p-0.5 transition-colors"
                           >
                             <X className="w-3 h-3" />
                           </button>
@@ -788,7 +942,7 @@ export default function StartForm() {
                 {/* Dias de preferencia */}
                 <div className="space-y-2">
                   <Label>Dias de preferencia (opcional)</Label>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     Selecione um ou mais dias. Quarta e domingo estao bloqueados.
                   </p>
                   <Controller
@@ -801,7 +955,13 @@ export default function StartForm() {
                           return (
                             <label
                               key={dia.value}
-                              className="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2"
+                              className={`flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors ${
+                                dia.disabled
+                                  ? "border-border opacity-50 cursor-not-allowed"
+                                  : checked
+                                    ? "border-primary bg-primary/5 cursor-pointer"
+                                    : "border-border hover:bg-accent cursor-pointer"
+                              }`}
                             >
                               <Checkbox
                                 checked={checked}
@@ -814,7 +974,7 @@ export default function StartForm() {
                                   field.onChange(next);
                                 }}
                               />
-                              <span className={`text-sm ${dia.disabled ? "text-gray-400" : "text-gray-700"}`}>
+                              <span className={`text-sm ${dia.disabled ? "text-muted-foreground/60" : "text-foreground"}`}>
                                 {dia.value}
                               </span>
                             </label>
@@ -829,7 +989,7 @@ export default function StartForm() {
                   <Label htmlFor="observacao">Observação (opcional)</Label>
                   <textarea
                     id="observacao"
-                    className="w-full rounded-md border border-gray-300 p-2 focus:border-blue-600 focus:outline-none"
+                    className="w-full rounded-lg border border-input bg-transparent p-3 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
                     rows={3}
                     {...register("observacao")}
                     placeholder="Alguma observação ou preferência adicional"
@@ -841,13 +1001,13 @@ export default function StartForm() {
             {/* Submit Button */}
             <Button
               type="submit"
-              className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-6 text-lg shadow-lg hover:shadow-xl transition-all duration-300"
+              className="w-full bg-gradient-to-r from-success to-success/85 hover:brightness-105 text-success-foreground font-semibold py-6 text-lg shadow-md hover:shadow-lg transition-all duration-300"
               disabled={submitMutation.isPending}
             >
               {submitMutation.isPending ? "Enviando..." : "Me Inscrever"}
             </Button>
 
-            <p className="text-xs text-center text-gray-500 mt-4">
+            <p className="text-xs text-center text-muted-foreground mt-4">
               * Indica que a pergunta é obrigatória
             </p>
           </form>
@@ -855,12 +1015,12 @@ export default function StartForm() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 py-6 mt-12">
+      <footer className="bg-card border-t border-border py-6 mt-12">
         <div className="container text-center">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted-foreground">
             © 2025 IECG - Igreja Evangélica Comunidade Global
           </p>
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             Orientando um novo começo
           </p>
         </div>

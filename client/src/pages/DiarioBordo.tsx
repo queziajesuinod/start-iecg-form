@@ -76,21 +76,21 @@ export default function DiarioBordo() {
   const carregou = pendentes !== null && respostas !== null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
-      <div className="container py-10">
+    <div className="min-h-dvh bg-gradient-to-b from-background to-muted/40">
+      <div className="container py-10 animate-fade-in-up">
         <div className="max-w-2xl mx-auto space-y-6">
 
           <header className="text-center space-y-2">
-            <p className="text-sm uppercase tracking-[0.3em] text-blue-500 font-semibold">START IECG</p>
-            <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Diário de Bordo</h1>
-            <p className="text-slate-500 text-sm">Responda os desafios da sua jornada</p>
+            <p className="text-sm uppercase tracking-[0.3em] text-primary font-semibold">START IECG</p>
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground">Diário de Bordo</h1>
+            <p className="text-muted-foreground text-sm">Responda os desafios da sua jornada</p>
           </header>
 
           {/* Formulário de e-mail */}
-          <Card className="p-6 bg-white shadow-md border border-slate-200">
+          <Card className="p-6 shadow-md">
             <form onSubmit={buscar} className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="email" className="text-slate-700 font-medium">Seu e-mail</Label>
+                <Label htmlFor="email" className="text-foreground font-medium">Seu e-mail</Label>
                 <Input
                   id="email"
                   type="email"
@@ -98,7 +98,7 @@ export default function DiarioBordo() {
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required
-                  className="bg-slate-50"
+                  className="bg-muted/50"
                 />
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
@@ -117,7 +117,7 @@ export default function DiarioBordo() {
                   <Clock className="h-4 w-4" />
                   A responder
                   {pendentes.length > 0 && (
-                    <span className="ml-1 rounded-full bg-blue-100 text-blue-700 text-xs px-2 py-0.5 font-semibold">
+                    <span className="ml-1 rounded-full bg-info/10 text-info border border-info/25 text-xs px-2 py-0.5 font-semibold">
                       {pendentes.length}
                     </span>
                   )}
@@ -126,7 +126,7 @@ export default function DiarioBordo() {
                   <CheckCircle2 className="h-4 w-4" />
                   Respondidas
                   {respostas.length > 0 && (
-                    <span className="ml-1 rounded-full bg-emerald-100 text-emerald-700 text-xs px-2 py-0.5 font-semibold">
+                    <span className="ml-1 rounded-full bg-success/10 text-success border border-success/25 text-xs px-2 py-0.5 font-semibold">
                       {respostas.length}
                     </span>
                   )}
@@ -136,8 +136,8 @@ export default function DiarioBordo() {
               {/* Aba: pendentes */}
               <TabsContent value="pendentes" className="space-y-4">
                 {pendentes.length === 0 ? (
-                  <Card className="p-8 text-center text-slate-500 bg-white">
-                    <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-400 mb-3" />
+                  <Card className="p-8 text-center text-muted-foreground bg-card">
+                    <CheckCircle2 className="mx-auto h-8 w-8 text-success mb-3" />
                     <p className="font-medium">Todos os desafios respondidos!</p>
                     <p className="text-sm mt-1">Confira suas respostas na aba "Respondidas".</p>
                   </Card>
@@ -156,8 +156,8 @@ export default function DiarioBordo() {
               {/* Aba: respondidas */}
               <TabsContent value="respondidas" className="space-y-4">
                 {respostas.length === 0 ? (
-                  <Card className="p-8 text-center text-slate-500 bg-white">
-                    <Clock className="mx-auto h-8 w-8 text-slate-300 mb-3" />
+                  <Card className="p-8 text-center text-muted-foreground bg-card">
+                    <Clock className="mx-auto h-8 w-8 text-muted-foreground mb-3" />
                     <p className="font-medium">Nenhuma resposta aprovada ainda.</p>
                     <p className="text-sm mt-1">Responda os desafios pendentes para acumular pontos!</p>
                   </Card>
@@ -184,13 +184,13 @@ export default function DiarioBordo() {
 function PontuacaoTotal({ respostas }: { respostas: Resposta[] }) {
   const total = respostas.reduce((acc, r) => acc + (r.pointsAwarded ?? 0), 0);
   return (
-    <Card className="p-4 bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-md border-0">
+    <Card className="p-4 bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-md border-0">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-blue-100 text-sm font-medium">Total de pontos acumulados</p>
+          <p className="text-primary-foreground/80 text-sm font-medium">Total de pontos acumulados</p>
           <p className="text-3xl font-bold">{total} pts</p>
         </div>
-        <Star className="h-10 w-10 text-blue-200" />
+        <Star className="h-10 w-10 text-primary-foreground/80" />
       </div>
     </Card>
   );
@@ -237,12 +237,12 @@ function ChallengeCard({
   const jaEnviou = !!challenge.userSubmission;
 
   return (
-    <Card className="shadow-md border border-slate-200 bg-white overflow-hidden">
+    <Card className="shadow-md overflow-hidden">
       <div className="px-6 py-5 space-y-4">
         {/* Cabeçalho */}
         <div className="flex items-start justify-between gap-3">
-          <p className="font-semibold text-slate-800 leading-snug">{challenge.title}</p>
-          <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+          <p className="font-semibold text-foreground leading-snug">{challenge.title}</p>
+          <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-info/10 text-info border border-info/25">
             {challenge.points} pts
           </span>
         </div>
@@ -250,14 +250,14 @@ function ChallengeCard({
         {/* Descrição / pergunta de fato */}
         {challenge.description && (
           <div
-            className="prose prose-sm prose-slate max-w-none text-slate-700"
+            className="prose prose-sm prose-slate dark:prose-invert max-w-none text-foreground"
             dangerouslySetInnerHTML={{ __html: challenge.description }}
           />
         )}
 
         {/* Feedback de rejeição (se houver) */}
         {jaEnviou && challenge.userSubmission?.status === 'rejected' && challenge.userSubmission.feedback && (
-          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+          <div className="rounded-lg bg-destructive/10 border border-destructive/25 px-4 py-3 text-sm text-destructive">
             <span className="font-semibold">Feedback: </span>{challenge.userSubmission.feedback}
           </div>
         )}
@@ -274,8 +274,8 @@ function ChallengeCard({
                   onClick={() => setOpcaoSel(val)}
                   className={`w-full text-left rounded-lg border px-4 py-3 text-sm transition-colors ${
                     opcaoSel === val
-                      ? 'border-blue-500 bg-blue-50 text-blue-800 font-medium'
-                      : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-slate-100'
+                      ? 'border-primary bg-primary/10 text-primary font-medium'
+                      : 'border-border bg-card text-foreground hover:bg-accent'
                   }`}
                 >
                   {opt.text}
@@ -285,7 +285,7 @@ function ChallengeCard({
           </div>
         ) : (
           <div className="space-y-1.5">
-            <Label className="text-slate-600 text-sm">Sua resposta</Label>
+            <Label className="text-muted-foreground text-sm">Sua resposta</Label>
             <HtmlEditor
               value={resposta}
               onChange={setResposta}
@@ -305,7 +305,7 @@ function ChallengeCard({
         </Button>
 
         {jaEnviou && challenge.userSubmission?.status === 'pending' && (
-          <p className="text-center text-xs text-amber-600">
+          <p className="text-center text-xs text-warning">
             Você já enviou uma resposta — ela está aguardando aprovação.
           </p>
         )}
@@ -318,27 +318,27 @@ function ChallengeCard({
 
 function RespostaCard({ resposta }: { resposta: Resposta }) {
   return (
-    <Card className="shadow-sm border border-slate-200 bg-white overflow-hidden">
+    <Card className="shadow-sm overflow-hidden">
       <div className="px-6 py-5 space-y-3">
         <div className="flex items-start justify-between gap-3">
-          <p className="font-semibold text-slate-800 leading-snug">{resposta.challenge?.title ?? '—'}</p>
-          <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <p className="font-semibold text-foreground leading-snug">{resposta.challenge?.title ?? '—'}</p>
+          <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-success/10 text-success border border-success/25">
             +{resposta.pointsAwarded ?? 0} pts
           </span>
         </div>
 
         <div
-          className="prose prose-sm prose-slate max-w-none rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-slate-700"
+          className="prose prose-sm prose-slate dark:prose-invert max-w-none rounded-lg bg-muted/50 border border-border px-4 py-3 text-foreground"
           dangerouslySetInnerHTML={{ __html: resposta.responseText }}
         />
 
         {resposta.feedback && (
-          <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-700">
+          <div className="rounded-lg bg-info/10 border border-info/25 px-4 py-3 text-sm text-info">
             <span className="font-semibold">Feedback: </span>{resposta.feedback}
           </div>
         )}
 
-        <div className="flex items-center justify-between text-xs text-slate-400">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>Enviado em {formatDate(resposta.submittedAt)}</span>
           {resposta.approvedAt && <span>Aprovado em {formatDate(resposta.approvedAt)}</span>}
         </div>

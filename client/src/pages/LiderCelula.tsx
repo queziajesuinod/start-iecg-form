@@ -17,6 +17,8 @@ import {
   upsertLeaderForCelula,
 } from '@/lib/celulaLeaderApi';
 import { geocodeAddress } from '@/lib/geocode';
+import { trpc } from '@/lib/trpc';
+import { MemberCombobox, type LiderancaOption } from '@/components/MemberCombobox';
 
 const MARITAL_OPTIONS = [
   { value: 'solteiro', label: 'Solteiro(a)' },
@@ -266,6 +268,13 @@ type LeaderForm = {
   cep: string;
   nomeEsposo: string;
   foto?: string;
+  // Cadeia de cobertura (Liderança Apostólica → Pastor de Geração → Pastor de Campus)
+  liderancaApostolicaMemberId: string;
+  liderancaApostolicaNome: string;
+  pastorGeracaoMemberId: string;
+  pastorGeracaoNome: string;
+  pastorCampusMemberId: string;
+  pastorCampusNome: string;
 };
 
 const initialLeaderForm: LeaderForm = {
@@ -287,7 +296,23 @@ const initialLeaderForm: LeaderForm = {
   escolaridade: '',
   nomeEsposo: '',
   foto: undefined,
+  liderancaApostolicaMemberId: '',
+  liderancaApostolicaNome: '',
+  pastorGeracaoMemberId: '',
+  pastorGeracaoNome: '',
+  pastorCampusMemberId: '',
+  pastorCampusNome: '',
 };
+
+// Extrai a cadeia de cobertura já cadastrada no membro (retornada pelo backend).
+const hierarquiaFromLeader = (leader?: LeaderSummary | null) => ({
+  liderancaApostolicaMemberId: leader?.liderancaApostolicaMemberId || '',
+  liderancaApostolicaNome: leader?.liderancaApostolica?.fullName || '',
+  pastorGeracaoMemberId: leader?.pastorGeracaoMemberId || '',
+  pastorGeracaoNome: leader?.pastorGeracao?.fullName || '',
+  pastorCampusMemberId: leader?.pastorCampusMemberId || '',
+  pastorCampusNome: leader?.pastorCampus?.fullName || '',
+});
 
 export default function LiderCelula() {
   const urlContact = useMemo(() => {
@@ -348,6 +373,27 @@ export default function LiderCelula() {
 
   const hasContact = useMemo(() => Boolean(searchContact.trim()), [searchContact]);
 
+  const hierarquiaQuery = trpc.celulas.hierarquiaOptions.useQuery();
+  const liderancasOptions = useMemo<LiderancaOption[]>(() => {
+    const data = hierarquiaQuery.data?.liderancas;
+    return Array.isArray(data) ? (data as LiderancaOption[]) : [];
+  }, [hierarquiaQuery.data]);
+
+  // Ao escolher a Liderança Apostólica, o Pastor de Geração e o Pastor de Campus
+  // são preenchidos automaticamente a partir do cadastro dela (não editáveis).
+  const handleLiderancaChange = (value: string) => {
+    const selected = liderancasOptions.find((l) => l.id === value);
+    setLeaderForm((prev) => ({
+      ...prev,
+      liderancaApostolicaMemberId: value,
+      liderancaApostolicaNome: selected?.fullName || '',
+      pastorGeracaoMemberId: selected?.pastorGeracaoMemberId || '',
+      pastorGeracaoNome: selected?.pastorGeracao?.fullName || '',
+      pastorCampusMemberId: selected?.pastorCampusMemberId || '',
+      pastorCampusNome: selected?.pastorCampus?.fullName || '',
+    }));
+  };
+
   const handleSearch = async () => {
     if (!hasContact) {
       toast.error('Informe um e-mail ou telefone para buscar o líder.');
@@ -396,6 +442,7 @@ export default function LiderCelula() {
           cep: fallbackLeader.cep || prev.cep,
           foto: leaderImage ?? prev.foto,
           nomeEsposo: spouseDetails?.name ?? prev.nomeEsposo,
+          ...hierarquiaFromLeader(fallbackLeader),
         }));
       }
       const activeCelulas = fetchedCelulas.filter((celula) => celula.ativo !== false);
@@ -453,6 +500,7 @@ export default function LiderCelula() {
         cep: effectiveLeader?.cep || prev.cep,
         foto: computedPhoto ?? prev.foto,
         nomeEsposo: spouseDetails?.name ?? prev.nomeEsposo,
+        ...hierarquiaFromLeader(effectiveLeader),
       }));
   };
 
@@ -669,6 +717,9 @@ export default function LiderCelula() {
         escolaridade: leaderForm.escolaridade || undefined,
         nome_esposo: leaderForm.nomeEsposo || undefined,
         image: imageDataUrl || undefined,
+        liderancaApostolicaMemberId: leaderForm.liderancaApostolicaMemberId || undefined,
+        pastorGeracaoMemberId: leaderForm.pastorGeracaoMemberId || undefined,
+        pastorCampusMemberId: leaderForm.pastorCampusMemberId || undefined,
       };
       const response = await upsertLeaderForCelula(payload);
       setLeaderResult(response.leader);
@@ -771,12 +822,12 @@ export default function LiderCelula() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-100 to-white py-10">
-      <div className="container max-w-5xl mx-auto space-y-6">
+    <div className="min-h-dvh bg-gradient-to-b from-background to-muted/40 py-10">
+      <div className="container max-w-5xl mx-auto space-y-6 animate-fade-in-up">
         <header className="text-center space-y-2">
-          <p className="text-xs uppercase tracking-[0.3em] text-slate-500 font-semibold">START IECG</p>
-          <h1 className="text-3xl font-bold text-slate-900">Cadastro e atualização de líder de célula</h1>
-          <p className="text-sm text-slate-600">
+          <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground font-semibold">START IECG</p>
+          <h1 className="text-3xl font-bold text-foreground">Cadastro e atualização de líder de célula</h1>
+          <p className="text-sm text-muted-foreground">
             Atualize os dados do usuário, selecione a célula correta e, se estiverem casados, vincule o cônjuge.
           </p>
         </header>
@@ -801,7 +852,7 @@ export default function LiderCelula() {
               {searching ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
               Buscar líder
             </Button>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted-foreground">
               A busca usa o e-mail e/ou o telefone com DDD (somente dígitos). Se não localizar, preencha os dados
               manualmente e selecione a célula.
             </p>
@@ -815,7 +866,7 @@ export default function LiderCelula() {
           <CardContent className="space-y-5">
             <div className="space-y-4">
               <div className="flex flex-col items-center gap-4">
-                <div className="relative w-40 h-40 rounded-full border border-slate-200 bg-slate-100 overflow-hidden">
+                <div className="relative w-40 h-40 rounded-full border border-border bg-muted overflow-hidden">
                   {cameraActive ? (
                     <video
                       ref={videoRef}
@@ -834,13 +885,13 @@ export default function LiderCelula() {
                       }}
                     />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center text-xs uppercase tracking-[0.5em] text-slate-400">
+                    <div className="flex h-full w-full items-center justify-center text-xs uppercase tracking-[0.5em] text-muted-foreground">
                       Foto do líder
                     </div>
                   )}
                 </div>
                 <div className="flex flex-wrap justify-center gap-2">
-                  <label className="flex items-center gap-2 rounded-md border border-dashed border-slate-300 px-3 py-2 text-sm cursor-pointer">
+                  <label className="flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm cursor-pointer">
                     <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
                     Upload da foto
                   </label>
@@ -866,7 +917,7 @@ export default function LiderCelula() {
                 </div>
                 {photoDataUrl && !cameraActive && (
                   <div className="space-y-3 w-full max-w-lg px-3">
-                    <div className="space-y-1 text-[10px] uppercase tracking-[0.4em] text-slate-500">
+                    <div className="space-y-1 text-[10px] uppercase tracking-[0.4em] text-muted-foreground">
                       <div className="flex items-center justify-between">
                         <span>Zoom</span>
                         <span>{photoZoom.toFixed(2)}x</span>
@@ -881,7 +932,7 @@ export default function LiderCelula() {
                         className="w-full"
                       />
                     </div>
-                    <div className="space-y-1 text-xs text-slate-500">
+                    <div className="space-y-1 text-xs text-muted-foreground">
                       <div className="flex items-center justify-between">
                         <span>X</span>
                         <span>{photoOffsetX}%</span>
@@ -895,7 +946,7 @@ export default function LiderCelula() {
                         className="w-full"
                       />
                     </div>
-                    <div className="space-y-1 text-xs text-slate-500">
+                    <div className="space-y-1 text-xs text-muted-foreground">
                       <div className="flex items-center justify-between">
                         <span>Y</span>
                         <span>{photoOffsetY}%</span>
@@ -920,21 +971,21 @@ export default function LiderCelula() {
                   <img
                     src={leaderProfileImage}
                     alt={`Foto do líder ${leaderResult?.name ?? ''}`.trim()}
-                    className="h-12 w-12 rounded-full border border-slate-200 object-cover"
+                    className="h-12 w-12 rounded-full border border-border object-cover"
                   />
                 )}
                 {leaderResult ? (
                   <>
-                    <span className="font-semibold text-slate-700">{leaderResult.name}</span>
+                    <span className="font-semibold text-foreground">{leaderResult.name}</span>
                     <Badge variant="secondary">{leaderResult.username}</Badge>
                     {leaderResult.is_lider_celula && <Badge variant="outline">Líder ativo</Badge>}
                   </>
                 ) : (
-                  <span className="font-semibold text-slate-700">Preencha os dados abaixo</span>
+                  <span className="font-semibold text-foreground">Preencha os dados abaixo</span>
                 )}
               </div>
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted-foreground">
               A vinculação a uma célula é opcional. Escolha uma célula para carregar dados já existentes ou deixe em branco para cadastros independentes.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -987,7 +1038,7 @@ export default function LiderCelula() {
                 <Label htmlFor="leader-estado">Estado civil</Label>
                 <select
                   id="leader-estado"
-                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
                   value={leaderForm.estadoCivil}
                   onChange={(event) => handleLeaderInput('estadoCivil')(event.target.value)}
                 >
@@ -1003,7 +1054,7 @@ export default function LiderCelula() {
                 <Label htmlFor="leader-education">Escolaridade</Label>
                 <select
                   id="leader-education"
-                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
                   value={leaderForm.escolaridade}
                   onChange={(event) => handleLeaderInput('escolaridade')(event.target.value)}
                 >
@@ -1083,7 +1134,7 @@ export default function LiderCelula() {
             </div>
 
             <div>
-              <p className="text-sm font-medium text-slate-700 mb-2">Escolas concluídas</p>
+              <p className="text-sm font-medium text-foreground mb-2">Escolas concluídas</p>
               <div className="flex flex-wrap gap-2">
                 {SCHOOL_OPTIONS.map((school) => {
                   const selected = leaderForm.escolas.includes(school);
@@ -1094,8 +1145,8 @@ export default function LiderCelula() {
                       onClick={() => toggleSchool(school)}
                       className={`rounded-full px-3 py-1 text-sm font-semibold transition ${
                         selected
-                          ? 'bg-primary text-white border border-primary'
-                          : 'border border-slate-200 bg-white text-slate-700'
+                          ? 'bg-primary text-primary-foreground border border-primary'
+                          : 'border border-border bg-card text-foreground'
                       }`}
                     >
                       {school}
@@ -1105,6 +1156,48 @@ export default function LiderCelula() {
               </div>
             </div>
 
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Hierarquia — cadeia de cobertura</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Liderança Apostólica → Pastor de Geração → Pastor de Campus. Ao selecionar a
+              Liderança Apostólica, o Pastor de Geração e o Pastor de Campus são preenchidos
+              automaticamente a partir do cadastro dela.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="leader-lideranca">Liderança Apostólica</Label>
+                <MemberCombobox
+                  id="leader-lideranca"
+                  options={liderancasOptions}
+                  value={leaderForm.liderancaApostolicaMemberId}
+                  onSelect={handleLiderancaChange}
+                  placeholder="Selecione a liderança"
+                  searchPlaceholder="Buscar liderança pelo nome..."
+                  emptyText={
+                    hierarquiaQuery.isError ? 'Erro ao carregar.' : 'Nenhuma liderança encontrada.'
+                  }
+                  loading={hierarquiaQuery.isLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Pastor de Geração</Label>
+                <div className="flex h-10 items-center rounded-md border border-border bg-muted/50 px-3 text-sm text-muted-foreground">
+                  {leaderForm.pastorGeracaoNome || 'Preenchido ao selecionar a liderança'}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Pastor de Campus</Label>
+                <div className="flex h-10 items-center rounded-md border border-border bg-muted/50 px-3 text-sm text-muted-foreground">
+                  {leaderForm.pastorCampusNome || 'Preenchido ao selecionar a liderança'}
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -1121,14 +1214,14 @@ export default function LiderCelula() {
                   value={leaderForm.nomeEsposo}
                   onChange={(event) => handleLeaderInput('nomeEsposo')(event.target.value)}
                 />
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   Preencha quando o cônjuge não estiver cadastrado como líder.
                 </p>
               </div>
               {spouseInfo ? (
-                <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-col gap-3 rounded-2xl border border-border bg-muted/50 p-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full border bg-white">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full border bg-card">
                       {spousePhoto ? (
                         <img
                           src={spousePhoto}
@@ -1136,19 +1229,19 @@ export default function LiderCelula() {
                           className="h-16 w-16 rounded-full object-cover"
                         />
                       ) : (
-                        <User className="h-8 w-8 text-slate-400" />
+                        <User className="h-8 w-8 text-muted-foreground" />
                       )}
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">{spouseInfo.name}</p>
-                      <p className="text-xs text-slate-500">{spouseInfo.email || 'E-mail não informado'}</p>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-sm font-semibold text-foreground">{spouseInfo.name}</p>
+                      <p className="text-xs text-muted-foreground">{spouseInfo.email || 'E-mail não informado'}</p>
+                      <p className="text-xs text-muted-foreground">
                         {spouseInfo.telefone ? formatPhone(spouseInfo.telefone) : 'Telefone não informado'}
                       </p>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-[11px] uppercase tracking-[0.4em] text-slate-400">Cônjuge vinculado</p>
+                    <p className="text-[11px] uppercase tracking-[0.4em] text-muted-foreground">Cônjuge vinculado</p>
                     <Button
                       variant="outline"
                       size="sm"
@@ -1187,7 +1280,7 @@ export default function LiderCelula() {
                     {linkingSpouse ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
                     Vincular cônjuge
                   </Button>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     Nenhum cônjuge vinculado. Use o campo acima para buscar por e-mail ou telefone.
                   </p>
                 </>
@@ -1216,18 +1309,20 @@ export default function LiderCelula() {
                 {displayCelulas.map((celula) => (
                   <div
                     key={celula.id}
-                    className={`rounded-2xl border p-4 transition ${
-                      selectedCelula?.id === celula.id ? 'border-primary bg-primary/5' : 'border-slate-200 bg-white'
+                    role="button"
+                    tabIndex={0}
+                    className={`rounded-2xl border p-4 transition focus-visible:ring-2 focus-visible:ring-ring ${
+                      selectedCelula?.id === celula.id ? 'border-primary bg-primary/5' : 'border-border bg-card'
                     }`}
                     onClick={() => handleSelectCelula(celula)}
                   >
                     <div className="flex items-center justify-between">
-                      <p className="font-semibold text-slate-900">{celula.celula || 'Célula sem nome'}</p>
+                      <p className="font-semibold text-foreground">{celula.celula || 'Célula sem nome'}</p>
                       <Badge variant="secondary">{celula.id.slice(0, 6)}</Badge>
                     </div>
-                    <p className="text-sm text-slate-600">Líder padrão: {celula.lider || '-'}</p>
-                    <p className="text-sm text-slate-600">E-mail: {celula.email_lider || '-'}</p>
-                    <p className="text-sm text-slate-600">
+                    <p className="text-sm text-muted-foreground">Líder padrão: {celula.lider || '-'}</p>
+                    <p className="text-sm text-muted-foreground">E-mail: {celula.email_lider || '-'}</p>
+                    <p className="text-sm text-muted-foreground">
                       Celular: {celula.cel_lider ? formatPhone(celula.cel_lider) : '-'}
                     </p>
                     <a
@@ -1237,7 +1332,7 @@ export default function LiderCelula() {
                       className={`mt-3 inline-flex items-center justify-center rounded-full border px-3 py-1 text-sm font-semibold transition ${
                         phoneQuery
                           ? 'border-primary text-primary hover:bg-primary/10'
-                          : 'border-slate-300 text-slate-500 pointer-events-none opacity-60'
+                          : 'border-border text-muted-foreground pointer-events-none opacity-60'
                       }`}
                     >
                       {phoneQuery ? 'Abrir Atualizar Célula' : 'Informe o celular do líder'}
@@ -1250,7 +1345,7 @@ export default function LiderCelula() {
         ) : (
         <Card>
           <CardContent>
-            <p className="text-sm text-slate-600">Nenhuma célula ativa encontrada para o contato informado.</p>
+            <p className="text-sm text-muted-foreground">Nenhuma célula ativa encontrada para o contato informado.</p>
           </CardContent>
         </Card>
       )}
