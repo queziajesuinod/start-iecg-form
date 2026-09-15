@@ -5,7 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MemberCombobox, type LiderancaOption } from "@/components/MemberCombobox";
+import { MemberCombobox, type LiderancaOption, type MemberOption } from "@/components/MemberCombobox";
 import { cn } from "@/lib/utils";
 import { geocodeAddress } from "@/lib/geocode";
 import { trpc } from "@/lib/trpc";
@@ -268,18 +268,83 @@ export default function AtualizarCelula() {
     return Array.isArray(data) ? (data as LiderancaOption[]) : [];
   }, [hierarquiaQuery.data]);
 
-  // Ao escolher a Liderança Apostólica, o Pastor de Geração e o Pastor de Campus
-  // são preenchidos automaticamente a partir do cadastro dela (não editáveis).
+  // A seleção é em cascata, do topo para baixo: primeiro o Pastor de Campus,
+  // que filtra os Pastores de Geração daquele campus, que por sua vez filtram
+  // as Lideranças Apostólicas vinculadas. As listas são derivadas das próprias
+  // lideranças (cada uma carrega a cadeia de cobertura), então só aparecem
+  // pastores/lideranças que realmente possuem vínculo.
+  const pastorCampusOptions = useMemo<MemberOption[]>(() => {
+    const map = new Map<string, MemberOption>();
+    for (const l of liderancasOptions) {
+      if (l.pastorCampusMemberId && l.pastorCampus) {
+        map.set(l.pastorCampusMemberId, {
+          id: l.pastorCampusMemberId,
+          fullName: l.pastorCampus.fullName,
+        });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.fullName.localeCompare(b.fullName));
+  }, [liderancasOptions]);
+
+  const pastorGeracaoOptions = useMemo<MemberOption[]>(() => {
+    const selectedCampus = formData.pastorCampusMemberId;
+    if (!selectedCampus) return [];
+    const map = new Map<string, MemberOption>();
+    for (const l of liderancasOptions) {
+      if (l.pastorCampusMemberId !== selectedCampus) continue;
+      if (l.pastorGeracaoMemberId && l.pastorGeracao) {
+        map.set(l.pastorGeracaoMemberId, {
+          id: l.pastorGeracaoMemberId,
+          fullName: l.pastorGeracao.fullName,
+        });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.fullName.localeCompare(b.fullName));
+  }, [liderancasOptions, formData.pastorCampusMemberId]);
+
+  const liderancaFiltradaOptions = useMemo<LiderancaOption[]>(() => {
+    const selectedGeracao = formData.pastorGeracaoMemberId;
+    if (!selectedGeracao) return [];
+    return liderancasOptions.filter(l => l.pastorGeracaoMemberId === selectedGeracao);
+  }, [liderancasOptions, formData.pastorGeracaoMemberId]);
+
+  // Ao trocar o Pastor de Campus, limpamos os níveis dependentes abaixo.
+  const handlePastorCampusChange = (value: string) => {
+    const selected = pastorCampusOptions.find(o => o.id === value);
+    setFormData(prev => ({
+      ...prev,
+      pastorCampusMemberId: value,
+      pastor_campus: selected?.fullName || "",
+      pastorGeracaoMemberId: "",
+      pastor_geracao: "",
+      liderancaMemberId: "",
+      lideranca: "",
+    }));
+  };
+
+  // Ao trocar o Pastor de Geração, limpamos apenas a Liderança selecionada.
+  const handlePastorGeracaoChange = (value: string) => {
+    const selected = pastorGeracaoOptions.find(o => o.id === value);
+    setFormData(prev => ({
+      ...prev,
+      pastorGeracaoMemberId: value,
+      pastor_geracao: selected?.fullName || "",
+      liderancaMemberId: "",
+      lideranca: "",
+    }));
+  };
+
   const handleLiderancaChange = (value: string) => {
     const selected = liderancasOptions.find(l => l.id === value);
     setFormData(prev => ({
       ...prev,
       liderancaMemberId: value,
       lideranca: selected?.fullName || "",
-      pastorGeracaoMemberId: selected?.pastorGeracaoMemberId || "",
-      pastor_geracao: selected?.pastorGeracao?.fullName || "",
-      pastorCampusMemberId: selected?.pastorCampusMemberId || "",
-      pastor_campus: selected?.pastorCampus?.fullName || "",
+      // Reforça a cadeia de cobertura a partir do cadastro da liderança.
+      pastorGeracaoMemberId: selected?.pastorGeracaoMemberId || prev.pastorGeracaoMemberId,
+      pastor_geracao: selected?.pastorGeracao?.fullName || prev.pastor_geracao,
+      pastorCampusMemberId: selected?.pastorCampusMemberId || prev.pastorCampusMemberId,
+      pastor_campus: selected?.pastorCampus?.fullName || prev.pastor_campus,
     }));
   };
 
@@ -815,35 +880,67 @@ export default function AtualizarCelula() {
                 <Input id="estado" value={formData.estado} onChange={handleInputChange("estado")} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="liderancaMemberId">Liderança Apostólica</Label>
+                <Label htmlFor="pastorCampusMemberId">Pastor de campus</Label>
                 <MemberCombobox
-                  id="liderancaMemberId"
-                  options={liderancasOptions}
-                  value={formData.liderancaMemberId}
-                  onSelect={handleLiderancaChange}
-                  placeholder="Selecione a liderança"
-                  searchPlaceholder="Buscar liderança pelo nome..."
-                  emptyText={hierarquiaQuery.isError ? "Erro ao carregar." : "Nenhuma liderança encontrada."}
+                  id="pastorCampusMemberId"
+                  options={pastorCampusOptions}
+                  value={formData.pastorCampusMemberId}
+                  onSelect={handlePastorCampusChange}
+                  placeholder="Selecione o pastor de campus"
+                  searchPlaceholder="Buscar pastor de campus..."
+                  emptyText={hierarquiaQuery.isError ? "Erro ao carregar." : "Nenhum pastor de campus encontrado."}
                   loading={hierarquiaQuery.isLoading}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Ao selecionar a liderança, o Pastor de Geração e o Pastor de Campus são preenchidos
-                  automaticamente.
+                  Comece pelo pastor de campus: ele filtra os pastores de geração e, em seguida, as
+                  lideranças vinculadas.
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label>Pastor de geração</Label>
-                <div className="flex h-10 items-center rounded-md border border-border bg-muted/50 px-3 text-sm text-muted-foreground">
-                  {formData.pastor_geracao || "Preenchido ao selecionar a liderança"}
-                </div>
+                <Label htmlFor="pastorGeracaoMemberId">Pastor de geração</Label>
+                <MemberCombobox
+                  id="pastorGeracaoMemberId"
+                  options={pastorGeracaoOptions}
+                  value={formData.pastorGeracaoMemberId}
+                  onSelect={handlePastorGeracaoChange}
+                  placeholder={
+                    formData.pastorCampusMemberId
+                      ? "Selecione o pastor de geração"
+                      : "Selecione o pastor de campus primeiro"
+                  }
+                  searchPlaceholder="Buscar pastor de geração..."
+                  emptyText={
+                    formData.pastorCampusMemberId
+                      ? "Nenhum pastor de geração para este campus."
+                      : "Selecione o pastor de campus primeiro."
+                  }
+                  loading={hierarquiaQuery.isLoading}
+                  disabled={!formData.pastorCampusMemberId}
+                />
               </div>
 
               <div className="space-y-2">
-                <Label>Pastor de campus</Label>
-                <div className="flex h-10 items-center rounded-md border border-border bg-muted/50 px-3 text-sm text-muted-foreground">
-                  {formData.pastor_campus || "Preenchido ao selecionar a liderança"}
-                </div>
+                <Label htmlFor="liderancaMemberId">Liderança Apostólica</Label>
+                <MemberCombobox
+                  id="liderancaMemberId"
+                  options={liderancaFiltradaOptions}
+                  value={formData.liderancaMemberId}
+                  onSelect={handleLiderancaChange}
+                  placeholder={
+                    formData.pastorGeracaoMemberId
+                      ? "Selecione a liderança"
+                      : "Selecione o pastor de geração primeiro"
+                  }
+                  searchPlaceholder="Buscar liderança pelo nome..."
+                  emptyText={
+                    formData.pastorGeracaoMemberId
+                      ? "Nenhuma liderança para este pastor de geração."
+                      : "Selecione o pastor de geração primeiro."
+                  }
+                  loading={hierarquiaQuery.isLoading}
+                  disabled={!formData.pastorGeracaoMemberId}
+                />
               </div>
 
               <div className="space-y-2">

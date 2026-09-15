@@ -31,6 +31,7 @@ export type MemberComboboxProps = {
   searchPlaceholder?: string;
   emptyText?: string;
   loading?: boolean;
+  disabled?: boolean;
   id?: string;
 };
 
@@ -42,6 +43,7 @@ export function MemberCombobox({
   searchPlaceholder = "Buscar...",
   emptyText = "Nenhum resultado.",
   loading = false,
+  disabled = false,
   id,
 }: MemberComboboxProps) {
   const [open, setOpen] = useState(false);
@@ -56,6 +58,7 @@ export function MemberCombobox({
           role="combobox"
           aria-expanded={open}
           id={id}
+          disabled={disabled || loading}
           className="w-full justify-between font-normal"
         >
           <span className={cn("truncate", !selected && "text-slate-500")}>
