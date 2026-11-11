@@ -423,12 +423,13 @@ function EventHero({ event }: { event: EventDef }) {
 }
 
 function EventInfoCard({ event }: { event: EventDef }) {
-  const description = htmlToText(event.description);
+  // Descrição vem como HTML (editor rich-text) — preservamos a formatação.
+  const hasDescription = htmlToText(event.description).length > 0;
   const place = (event.location || "").trim();
   const region = [event.neighborhood, event.city].map((s) => (s || "").trim()).filter(Boolean).join(", ");
   const hasPlace = Boolean(place || region);
 
-  if (!description && !hasPlace) return null;
+  if (!hasDescription && !hasPlace) return null;
 
   return (
     <Card className="p-5">
@@ -449,10 +450,11 @@ function EventInfoCard({ event }: { event: EventDef }) {
           </div>
         ) : null}
 
-        {description ? (
-          <p className="border-t border-border pt-4 text-sm leading-relaxed text-muted-foreground">
-            {description}
-          </p>
+        {hasDescription ? (
+          <div
+            className="prose prose-sm max-w-none border-t border-border pt-4 text-muted-foreground dark:prose-invert prose-headings:text-foreground prose-strong:text-foreground prose-a:text-primary"
+            dangerouslySetInnerHTML={{ __html: event.description || "" }}
+          />
         ) : null}
       </div>
     </Card>
