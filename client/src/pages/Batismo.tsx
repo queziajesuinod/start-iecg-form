@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -13,8 +14,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import api from "@/lib/apiClient";
 import { maskCPF, maskPhone } from "@/lib/masks";
+import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CheckCircle2, Droplets, Loader2 } from "lucide-react";
+import { CheckCircle2, Droplets, Loader2, Sparkles } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -80,12 +82,16 @@ const isOpenBatch = (batch: BatchDef, now: number): boolean => {
 
 const sortByOrder = (a: FormFieldDef, b: FormFieldDef) => (a.order ?? 0) - (b.order ?? 0);
 
+// Checkbox simples de aceite → sem opções e tipo checkbox.
+const isAcceptanceCheckbox = (field: FormFieldDef) =>
+  field.fieldType === "checkbox" && normalizeOptions(field.options).length === 0;
+
 // Monta o schema zod dinamicamente a partir dos campos do formulário do evento.
 const buildSchema = (fields: FormFieldDef[]) => {
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const field of fields) {
     const required = Boolean(field.isRequired);
-    if (field.fieldType === "checkbox" && normalizeOptions(field.options).length === 0) {
+    if (isAcceptanceCheckbox(field)) {
       // Checkbox simples (aceite) → booleano.
       shape[field.fieldName] = required
         ? z.boolean().refine((v) => v === true, { message: "Campo obrigatório" })
@@ -132,6 +138,8 @@ export default function Batismo() {
 
         const allFields: FormFieldDef[] = Array.isArray(fieldsResp.data) ? fieldsResp.data : [];
         // Campos únicos por fieldName (buyer + attendee), ordenados.
+        // Evento gratuito: não há dados de comprador separados — os mesmos
+        // dados da pessoa servem de contato e de inscrito.
         const seen = new Set<string>();
         const uniqueFields = allFields
           .slice()
@@ -162,45 +170,86 @@ export default function Batismo() {
   }, [slug]);
 
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-background to-muted/40 flex flex-col">
-      <header className="bg-card/80 backdrop-blur-sm border-b border-border sticky top-0 z-30">
-        <div className="container py-6 flex flex-col items-center gap-3">
-          <div className="w-16 h-16 bg-gradient-to-br from-primary to-primary/75 rounded-2xl flex items-center justify-center shadow-lg">
-            <Droplets className="w-8 h-8 text-primary-foreground" />
-          </div>
-          <div className="text-center">
-            <h1 className="text-3xl md:text-4xl font-bold text-primary tracking-tight">Batismo</h1>
-            <p className="text-muted-foreground text-sm md:text-base mt-1">
-              {event?.title || "Inscrição para o batismo"}
-            </p>
-          </div>
-        </div>
-      </header>
-
-      <main className="container flex-1 py-8">
+    <div className="min-h-dvh bg-gradient-to-b from-background via-background to-primary/5">
+      <main className="container max-w-2xl flex-1 py-6 md:py-10">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <div className="flex flex-col items-center justify-center py-28 gap-3">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Carregando...</p>
+            <p className="text-sm text-muted-foreground">Carregando inscrição...</p>
           </div>
         ) : loadError ? (
-          <Card className="max-w-2xl mx-auto p-6 text-center">
-            <p className="font-semibold text-destructive mb-1">Não foi possível abrir o batismo</p>
+          <Card className="p-8 text-center animate-fade-in">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+              <Droplets className="h-6 w-6 text-destructive" />
+            </div>
+            <p className="font-semibold text-foreground mb-1">Não foi possível abrir o batismo</p>
             <p className="text-sm text-muted-foreground">{loadError}</p>
           </Card>
-        ) : !openBatch ? (
-          <Card className="max-w-2xl mx-auto p-8 text-center">
-            <p className="font-semibold text-foreground mb-1">Inscrições fechadas</p>
-            <p className="text-sm text-muted-foreground">
-              No momento não há período de inscrição aberto para o batismo. Volte quando a inscrição
-              estiver disponível.
-            </p>
-          </Card>
         ) : event ? (
-          <BaptismForm event={event} fields={fields} batch={openBatch} />
+          <div className="space-y-6 animate-fade-in-up">
+            <EventHero event={event} />
+            {!openBatch ? (
+              <Card className="p-8 text-center">
+                <p className="font-semibold text-foreground mb-1">Inscrições fechadas</p>
+                <p className="text-sm text-muted-foreground">
+                  No momento não há período de inscrição aberto para o batismo. Volte quando a
+                  inscrição estiver disponível.
+                </p>
+              </Card>
+            ) : (
+              <BaptismForm event={event} fields={fields} batch={openBatch} />
+            )}
+          </div>
         ) : null}
       </main>
     </div>
+  );
+}
+
+// ── capa / hero do evento ─────────────────────────────────────────────────────
+
+function EventHero({ event }: { event: EventDef }) {
+  const title = event.title || "Batismo";
+  return (
+    <section className="overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
+      <div className="relative aspect-[16/10] w-full bg-gradient-to-br from-primary to-primary/70 sm:aspect-[2/1]">
+        {event.imageUrl ? (
+          <img
+            src={event.imageUrl}
+            alt={`Capa do evento ${title}`}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Droplets className="h-24 w-24 text-primary-foreground/25" />
+          </div>
+        )}
+        {/* Overlay para legibilidade do texto sobre a imagem */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+
+        <div className="absolute inset-x-0 bottom-0 p-5 sm:p-7">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/25 backdrop-blur-sm">
+              <Droplets className="h-3.5 w-3.5" />
+              Batismo
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-success/90 px-3 py-1 text-xs font-semibold text-success-foreground ring-1 ring-white/20 backdrop-blur-sm">
+              <Sparkles className="h-3.5 w-3.5" />
+              Inscrição gratuita
+            </span>
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-white drop-shadow-sm sm:text-3xl md:text-4xl">
+            {title}
+          </h1>
+        </div>
+      </div>
+
+      {event.description ? (
+        <p className="whitespace-pre-line px-5 py-4 text-sm leading-relaxed text-muted-foreground sm:px-7">
+          {event.description}
+        </p>
+      ) : null}
+    </section>
   );
 }
 
@@ -219,8 +268,7 @@ function BaptismForm({
   const defaultValues = useMemo(() => {
     const dv: Record<string, unknown> = {};
     for (const f of fields) {
-      dv[f.fieldName] =
-        f.fieldType === "checkbox" && normalizeOptions(f.options).length === 0 ? false : "";
+      dv[f.fieldName] = isAcceptanceCheckbox(f) ? false : "";
     }
     return dv;
   }, [fields]);
@@ -263,21 +311,25 @@ function BaptismForm({
 
   if (success) {
     return (
-      <Card className="max-w-2xl mx-auto p-6 md:p-8 text-center">
+      <Card className="p-6 text-center md:p-8 animate-fade-in">
         <div className="flex flex-col items-center gap-3">
-          <CheckCircle2 className="w-10 h-10 text-success" />
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
+            <CheckCircle2 className="h-9 w-9 text-success" />
+          </div>
           <h2 className="text-xl font-bold text-foreground">Inscrição confirmada!</h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="max-w-sm text-sm text-muted-foreground">
             Apresente este QR Code no dia do batismo para confirmar sua presença.
           </p>
           <img
             src={success.qr}
             alt="QR Code da inscrição"
-            className="w-56 h-56 rounded-xl border border-border bg-white p-2"
+            className="h-56 w-56 rounded-2xl border border-border bg-white p-3 shadow-sm"
           />
-          <p className="text-sm text-foreground">
-            Código: <span className="font-mono font-semibold">{success.orderCode}</span>
-          </p>
+          <div className="rounded-xl bg-muted px-4 py-2.5">
+            <p className="text-sm text-foreground">
+              Código: <span className="font-mono font-semibold tracking-wide">{success.orderCode}</span>
+            </p>
+          </div>
           <p className="text-xs text-muted-foreground">
             Guarde este código. Você também pode tirar um print desta tela.
           </p>
@@ -287,15 +339,15 @@ function BaptismForm({
   }
 
   return (
-    <Card className="max-w-2xl mx-auto p-6 md:p-8 shadow-lg">
+    <Card className="p-5 shadow-sm md:p-8">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-foreground mb-1">Inscrição</h2>
-        <p className="text-sm text-muted-foreground uppercase tracking-wide">
-          Preencha seus dados para o batismo
+        <h2 className="text-xl font-bold text-foreground md:text-2xl">Faça sua inscrição</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Preencha seus dados para participar do batismo.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
         {fields.map((field) => (
           <FieldRenderer
             key={field.fieldName}
@@ -305,16 +357,19 @@ function BaptismForm({
           />
         ))}
 
-        <Button type="submit" className="w-full" disabled={isSubmitting}>
+        <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
           {isSubmitting ? (
             <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Enviando...
             </>
           ) : (
             "Confirmar inscrição"
           )}
         </Button>
+        <p className="text-center text-xs text-muted-foreground">
+          <span className="text-destructive">*</span> Campos obrigatórios
+        </p>
       </form>
     </Card>
   );
@@ -336,18 +391,32 @@ function FieldRenderer({
   const requiredMark = field.isRequired ? <span className="text-destructive"> *</span> : null;
 
   // Checkbox simples (aceite).
-  if (field.fieldType === "checkbox" && options.length === 0) {
+  if (isAcceptanceCheckbox(field)) {
     return (
       <Controller
         name={field.fieldName}
         control={control}
         render={({ field: f }) => (
-          <div className="flex items-start gap-2">
-            <Checkbox id={field.fieldName} checked={Boolean(f.value)} onCheckedChange={f.onChange} />
-            <Label htmlFor={field.fieldName} className="text-sm leading-snug">
-              {field.fieldLabel}
-              {requiredMark}
-            </Label>
+          <div>
+            <label
+              htmlFor={field.fieldName}
+              className={cn(
+                "flex cursor-pointer items-start gap-3 rounded-xl border border-border p-4 transition-colors",
+                "hover:bg-accent/50 has-[:checked]:border-primary has-[:checked]:bg-primary/5"
+              )}
+            >
+              <Checkbox
+                id={field.fieldName}
+                checked={Boolean(f.value)}
+                onCheckedChange={f.onChange}
+                className="mt-0.5"
+              />
+              <span className="text-sm leading-snug text-foreground">
+                {field.fieldLabel}
+                {requiredMark}
+              </span>
+            </label>
+            {error && <p className="mt-1.5 text-xs text-destructive">{error}</p>}
           </div>
         )}
       />
@@ -356,7 +425,7 @@ function FieldRenderer({
 
   return (
     <div className="space-y-2">
-      <Label htmlFor={field.fieldName}>
+      <Label htmlFor={field.fieldName} className="text-sm font-medium">
         {field.fieldLabel}
         {requiredMark}
       </Label>
@@ -364,11 +433,41 @@ function FieldRenderer({
         name={field.fieldName}
         control={control}
         render={({ field: f }) => {
-          // Select / radio → dropdown.
+          // Radio → cartões selecionáveis (não vira dropdown).
+          if (field.fieldType === "radio" && options.length > 0) {
+            return (
+              <RadioGroup
+                value={(f.value as string) || ""}
+                onValueChange={f.onChange}
+                className="gap-2"
+              >
+                {options.map((opt) => {
+                  const id = `${field.fieldName}-${opt.value}`;
+                  const selected = f.value === opt.value;
+                  return (
+                    <Label
+                      key={opt.value}
+                      htmlFor={id}
+                      className={cn(
+                        "flex cursor-pointer items-center gap-3 rounded-xl border p-3.5 text-sm font-normal transition-colors",
+                        "hover:bg-accent/50",
+                        selected ? "border-primary bg-primary/5" : "border-border"
+                      )}
+                    >
+                      <RadioGroupItem id={id} value={opt.value} />
+                      <span className="leading-snug text-foreground">{opt.label}</span>
+                    </Label>
+                  );
+                })}
+              </RadioGroup>
+            );
+          }
+
+          // Demais campos com opções (select) → dropdown.
           if (options.length > 0) {
             return (
               <Select value={(f.value as string) || ""} onValueChange={f.onChange}>
-                <SelectTrigger id={field.fieldName}>
+                <SelectTrigger id={field.fieldName} className="h-11 w-full">
                   <SelectValue placeholder={field.placeholder || "Selecione"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -389,6 +488,7 @@ function FieldRenderer({
                 placeholder={field.placeholder || ""}
                 value={(f.value as string) || ""}
                 onChange={f.onChange}
+                className="min-h-24"
               />
             );
           }
@@ -411,7 +511,10 @@ function FieldRenderer({
             <Input
               id={field.fieldName}
               type={inputType}
-              inputMode={field.fieldType === "phone" || field.fieldType === "cpf" ? "numeric" : undefined}
+              className="h-11"
+              inputMode={
+                field.fieldType === "phone" || field.fieldType === "cpf" ? "numeric" : undefined
+              }
               placeholder={field.placeholder || ""}
               value={(f.value as string) || ""}
               onChange={(e) => f.onChange(applyMask(e.target.value))}
