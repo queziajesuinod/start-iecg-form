@@ -25,7 +25,7 @@ import api from "@/lib/apiClient";
 import { maskCPF, maskPhone } from "@/lib/masks";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Check, CheckCircle2, ChevronsUpDown, Droplets, Loader2, MapPin, Sparkles } from "lucide-react";
+import { Check, CheckCircle2, ChevronsUpDown, Droplets, Loader2, MapPin } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -121,8 +121,34 @@ const isFullWidthField = (field: FormFieldDef): boolean => {
   return false;
 };
 
+const isEmailField = (f: FormFieldDef) => f.fieldType === "email" || /email/i.test(f.fieldName);
+
+// O e-mail só existe na seção "comprador". Como não pedimos dados do comprador,
+// incorporamos esse e-mail ao cadastro do inscrito (serve de contato e de buyer_email).
+const buildAttendeeFields = (
+  attendee: FormFieldDef[],
+  buyer: FormFieldDef[]
+): FormFieldDef[] => {
+  if (attendee.some(isEmailField)) return attendee;
+  const buyerEmail = buyer.find(isEmailField);
+  if (!buyerEmail) return attendee;
+  const emailField: FormFieldDef = {
+    fieldName: "email",
+    fieldLabel: "E-mail",
+    fieldType: "email",
+    isRequired: buyerEmail.isRequired ?? true,
+    placeholder: "seu@email.com",
+    section: "attendee",
+    order: 0,
+  };
+  const nameIdx = attendee.findIndex((f) => /nome|name/i.test(f.fieldName));
+  const merged = attendee.slice();
+  merged.splice(nameIdx >= 0 ? nameIdx + 1 : 0, 0, emailField);
+  return merged;
+};
+
 // Evento gratuito: não pedimos dados do comprador. Derivamos o buyerData exigido
-// pela API a partir dos próprios dados do inscrito (nome, documento, contato).
+// pela API a partir dos próprios dados do inscrito (nome, e-mail, documento, contato).
 const deriveBuyerData = (
   buyerFields: FormFieldDef[],
   attendeeFields: FormFieldDef[],
@@ -212,7 +238,7 @@ export default function Batismo() {
 
         if (!active) return;
         setEvent(ev);
-        setFields(attendee);
+        setFields(buildAttendeeFields(attendee, buyer));
         setBuyerFields(buyer);
         setOpenBatch(aberto);
       } catch (err) {
@@ -299,16 +325,6 @@ function EventHero({ event }: { event: EventDef }) {
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
 
         <div className="absolute inset-x-0 bottom-0 p-5">
-          <div className="mb-2.5 flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/25 backdrop-blur-sm">
-              <Droplets className="h-3.5 w-3.5" />
-              Batismo
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-success/90 px-3 py-1 text-xs font-semibold text-success-foreground ring-1 ring-white/20 backdrop-blur-sm">
-              <Sparkles className="h-3.5 w-3.5" />
-              Gratuito
-            </span>
-          </div>
           <h1 className="text-2xl font-bold tracking-tight text-white drop-shadow-sm sm:text-3xl">
             {title}
           </h1>
@@ -344,16 +360,6 @@ function EventInfoCard({ event }: { event: EventDef }) {
             </div>
           </div>
         ) : null}
-
-        <div className="flex gap-3">
-          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-success/10">
-            <Sparkles className="h-5 w-5 text-success" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground">Inscrição gratuita</p>
-            <p className="text-sm text-muted-foreground">Evento sem custo de participação.</p>
-          </div>
-        </div>
 
         {description ? (
           <p className="border-t border-border pt-4 text-sm leading-relaxed text-muted-foreground">
