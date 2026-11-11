@@ -1,8 +1,17 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
@@ -16,7 +25,7 @@ import api from "@/lib/apiClient";
 import { maskCPF, maskPhone } from "@/lib/masks";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CheckCircle2, Droplets, Loader2, Sparkles } from "lucide-react";
+import { Check, CheckCircle2, ChevronsUpDown, Droplets, Loader2, MapPin, Sparkles } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -26,6 +35,9 @@ import { z } from "zod";
 
 // Slug padrão do evento fixo de batismo (pode ser sobrescrito pela rota /batismo/:slug).
 const DEFAULT_SLUG = import.meta.env.VITE_BAPTISM_EVENT_SLUG || "batismo";
+
+// Acima deste número de opções, um campo vira busca (combobox) em vez de lista.
+const COMBOBOX_THRESHOLD = 8;
 
 interface FormFieldDef {
   fieldName: string;
@@ -53,11 +65,16 @@ interface EventDef {
   description?: string;
   isActive?: boolean;
   imageUrl?: string | null;
+  location?: string | null;
+  neighborhood?: string | null;
+  city?: string | null;
 }
+
+type Option = { value: string; label: string };
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-const normalizeOptions = (options: unknown): { value: string; label: string }[] => {
+const normalizeOptions = (options: unknown): Option[] => {
   if (!Array.isArray(options)) return [];
   return options
     .map((opt) => {
@@ -70,7 +87,7 @@ const normalizeOptions = (options: unknown): { value: string; label: string }[] 
       }
       return null;
     })
-    .filter((o): o is { value: string; label: string } => Boolean(o));
+    .filter((o): o is Option => Boolean(o));
 };
 
 const isOpenBatch = (batch: BatchDef, now: number): boolean => {
@@ -86,13 +103,53 @@ const sortByOrder = (a: FormFieldDef, b: FormFieldDef) => (a.order ?? 0) - (b.or
 const isAcceptanceCheckbox = (field: FormFieldDef) =>
   field.fieldType === "checkbox" && normalizeOptions(field.options).length === 0;
 
+// Remove tags HTML da descrição (vem de um editor rich-text) e retorna texto limpo.
+const htmlToText = (html?: string | null): string =>
+  (html || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+// Campos que ocupam a linha inteira no grid do formulário.
+const isFullWidthField = (field: FormFieldDef): boolean => {
+  if (isAcceptanceCheckbox(field)) return true;
+  if (field.fieldType === "textarea") return true;
+  if (field.fieldType === "radio") return true;
+  if (normalizeOptions(field.options).length > COMBOBOX_THRESHOLD) return true;
+  if (/endereco|address|nome_completo/i.test(field.fieldName)) return true;
+  return false;
+};
+
+// Evento gratuito: não pedimos dados do comprador. Derivamos o buyerData exigido
+// pela API a partir dos próprios dados do inscrito (nome, documento, contato).
+const deriveBuyerData = (
+  buyerFields: FormFieldDef[],
+  attendeeFields: FormFieldDef[],
+  values: Record<string, unknown>
+): Record<string, unknown> => {
+  const out: Record<string, unknown> = {};
+  const find = (re: RegExp, type?: string) =>
+    attendeeFields.find((f) => (type && f.fieldType === type) || re.test(f.fieldName));
+  for (const bf of buyerFields) {
+    const name = bf.fieldName.toLowerCase();
+    let src: FormFieldDef | undefined;
+    if (bf.fieldType === "cpf" || /document|cpf|cnpj/.test(name)) src = find(/cpf|document/, "cpf");
+    else if (bf.fieldType === "email" || /email/.test(name)) src = find(/email/, "email");
+    else if (bf.fieldType === "phone" || /whats|telefone|phone|celular/.test(name))
+      src = find(/whats|telefone|phone|celular/, "phone");
+    else if (/name|nome/.test(name)) src = find(/nome|name/);
+    out[bf.fieldName] = src ? values[src.fieldName] ?? "" : "";
+  }
+  return out;
+};
+
 // Monta o schema zod dinamicamente a partir dos campos do formulário do evento.
 const buildSchema = (fields: FormFieldDef[]) => {
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const field of fields) {
     const required = Boolean(field.isRequired);
     if (isAcceptanceCheckbox(field)) {
-      // Checkbox simples (aceite) → booleano.
       shape[field.fieldName] = required
         ? z.boolean().refine((v) => v === true, { message: "Campo obrigatório" })
         : z.boolean().optional();
@@ -115,6 +172,7 @@ export default function Batismo() {
   const [loadError, setLoadError] = useState("");
   const [event, setEvent] = useState<EventDef | null>(null);
   const [fields, setFields] = useState<FormFieldDef[]>([]);
+  const [buyerFields, setBuyerFields] = useState<FormFieldDef[]>([]);
   const [openBatch, setOpenBatch] = useState<BatchDef | null>(null);
 
   useEffect(() => {
@@ -137,11 +195,13 @@ export default function Batismo() {
         const aberto = batches.find((b) => isOpenBatch(b, now)) || null;
 
         const allFields: FormFieldDef[] = Array.isArray(fieldsResp.data) ? fieldsResp.data : [];
-        // Campos únicos por fieldName (buyer + attendee), ordenados.
-        // Evento gratuito: não há dados de comprador separados — os mesmos
-        // dados da pessoa servem de contato e de inscrito.
+
+        // Evento gratuito: escondemos a seção "comprador" (duplicada). Mostramos só os
+        // campos do inscrito; o buyerData é derivado desses dados na hora de enviar.
+        const buyer = allFields.filter((f) => f.section === "buyer");
         const seen = new Set<string>();
-        const uniqueFields = allFields
+        const attendee = allFields
+          .filter((f) => f.section !== "buyer")
           .slice()
           .sort(sortByOrder)
           .filter((f) => {
@@ -152,7 +212,8 @@ export default function Batismo() {
 
         if (!active) return;
         setEvent(ev);
-        setFields(uniqueFields);
+        setFields(attendee);
+        setBuyerFields(buyer);
         setOpenBatch(aberto);
       } catch (err) {
         if (!active) return;
@@ -171,14 +232,14 @@ export default function Batismo() {
 
   return (
     <div className="min-h-dvh bg-gradient-to-b from-background via-background to-primary/5">
-      <main className="container max-w-2xl flex-1 py-6 md:py-10">
+      <main className="container max-w-6xl py-6 md:py-10">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-28 gap-3">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
             <p className="text-sm text-muted-foreground">Carregando inscrição...</p>
           </div>
         ) : loadError ? (
-          <Card className="p-8 text-center animate-fade-in">
+          <Card className="mx-auto max-w-lg p-8 text-center animate-fade-in">
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
               <Droplets className="h-6 w-6 text-destructive" />
             </div>
@@ -186,19 +247,29 @@ export default function Batismo() {
             <p className="text-sm text-muted-foreground">{loadError}</p>
           </Card>
         ) : event ? (
-          <div className="space-y-6 animate-fade-in-up">
-            <EventHero event={event} />
-            {!openBatch ? (
-              <Card className="p-8 text-center">
-                <p className="font-semibold text-foreground mb-1">Inscrições fechadas</p>
-                <p className="text-sm text-muted-foreground">
-                  No momento não há período de inscrição aberto para o batismo. Volte quando a
-                  inscrição estiver disponível.
-                </p>
-              </Card>
-            ) : (
-              <BaptismForm event={event} fields={fields} batch={openBatch} />
-            )}
+          <div className="grid items-start gap-6 animate-fade-in-up lg:grid-cols-5 lg:gap-8">
+            <aside className="space-y-4 lg:col-span-2 lg:sticky lg:top-6">
+              <EventHero event={event} />
+              <EventInfoCard event={event} />
+            </aside>
+            <div className="lg:col-span-3">
+              {!openBatch ? (
+                <Card className="p-8 text-center">
+                  <p className="font-semibold text-foreground mb-1">Inscrições fechadas</p>
+                  <p className="text-sm text-muted-foreground">
+                    No momento não há período de inscrição aberto para o batismo. Volte quando a
+                    inscrição estiver disponível.
+                  </p>
+                </Card>
+              ) : (
+                <BaptismForm
+                  event={event}
+                  fields={fields}
+                  buyerFields={buyerFields}
+                  batch={openBatch}
+                />
+              )}
+            </div>
           </div>
         ) : null}
       </main>
@@ -209,10 +280,10 @@ export default function Batismo() {
 // ── capa / hero do evento ─────────────────────────────────────────────────────
 
 function EventHero({ event }: { event: EventDef }) {
-  const title = event.title || "Batismo";
+  const title = (event.title || "Batismo").trim();
   return (
     <section className="overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
-      <div className="relative aspect-[16/10] w-full bg-gradient-to-br from-primary to-primary/70 sm:aspect-[2/1]">
+      <div className="relative aspect-[16/10] w-full bg-gradient-to-br from-primary to-primary/70">
         {event.imageUrl ? (
           <img
             src={event.imageUrl}
@@ -225,31 +296,72 @@ function EventHero({ event }: { event: EventDef }) {
           </div>
         )}
         {/* Overlay para legibilidade do texto sobre a imagem */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
 
-        <div className="absolute inset-x-0 bottom-0 p-5 sm:p-7">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="absolute inset-x-0 bottom-0 p-5">
+          <div className="mb-2.5 flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/25 backdrop-blur-sm">
               <Droplets className="h-3.5 w-3.5" />
               Batismo
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-success/90 px-3 py-1 text-xs font-semibold text-success-foreground ring-1 ring-white/20 backdrop-blur-sm">
               <Sparkles className="h-3.5 w-3.5" />
-              Inscrição gratuita
+              Gratuito
             </span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white drop-shadow-sm sm:text-3xl md:text-4xl">
+          <h1 className="text-2xl font-bold tracking-tight text-white drop-shadow-sm sm:text-3xl">
             {title}
           </h1>
         </div>
       </div>
-
-      {event.description ? (
-        <p className="whitespace-pre-line px-5 py-4 text-sm leading-relaxed text-muted-foreground sm:px-7">
-          {event.description}
-        </p>
-      ) : null}
     </section>
+  );
+}
+
+function EventInfoCard({ event }: { event: EventDef }) {
+  const description = htmlToText(event.description);
+  const place = (event.location || "").trim();
+  const region = [event.neighborhood, event.city].map((s) => (s || "").trim()).filter(Boolean).join(", ");
+  const hasPlace = Boolean(place || region);
+
+  if (!description && !hasPlace) return null;
+
+  return (
+    <Card className="p-5">
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+        Informações
+      </h2>
+      <div className="space-y-4">
+        {hasPlace ? (
+          <div className="flex gap-3">
+            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+              <MapPin className="h-5 w-5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Local</p>
+              {place ? <p className="text-sm font-medium text-foreground">{place}</p> : null}
+              {region ? <p className="text-sm text-muted-foreground">{region}</p> : null}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="flex gap-3">
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-success/10">
+            <Sparkles className="h-5 w-5 text-success" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">Inscrição gratuita</p>
+            <p className="text-sm text-muted-foreground">Evento sem custo de participação.</p>
+          </div>
+        </div>
+
+        {description ? (
+          <p className="border-t border-border pt-4 text-sm leading-relaxed text-muted-foreground">
+            {description}
+          </p>
+        ) : null}
+      </div>
+    </Card>
   );
 }
 
@@ -258,10 +370,12 @@ function EventHero({ event }: { event: EventDef }) {
 function BaptismForm({
   event,
   fields,
+  buyerFields,
   batch,
 }: {
   event: EventDef;
   fields: FormFieldDef[];
+  buyerFields: FormFieldDef[];
   batch: BatchDef;
 }) {
   const schema = useMemo(() => buildSchema(fields), [fields]);
@@ -283,19 +397,19 @@ function BaptismForm({
 
   const onSubmit = async (values: Record<string, unknown>) => {
     try {
-      // Pessoa do batismo: os mesmos dados servem de comprador (contato) e de inscrito.
       const data = { ...values };
+      // buyerData derivado dos dados do inscrito (evento gratuito, sem comprador).
+      const buyerData = { ...data, ...deriveBuyerData(buyerFields, fields, values) };
       const payload = {
         eventId: event.id,
         quantity: 1,
-        buyerData: data,
+        buyerData,
         attendeesData: [{ batchId: batch.id, data }],
       };
       const resp = await api.post("/api/public/events/register", payload);
       const orderCode: string = resp.data?.orderCode || resp.data?.registration?.orderCode || "";
       if (!orderCode) throw new Error("Inscrição criada, mas sem código de confirmação.");
 
-      // QR lido pelo app de check-in (aceita JSON com orderCode/eventId).
       const qr = await QRCode.toDataURL(JSON.stringify({ orderCode, eventId: event.id }), {
         margin: 1,
         width: 320,
@@ -327,7 +441,8 @@ function BaptismForm({
           />
           <div className="rounded-xl bg-muted px-4 py-2.5">
             <p className="text-sm text-foreground">
-              Código: <span className="font-mono font-semibold tracking-wide">{success.orderCode}</span>
+              Código:{" "}
+              <span className="font-mono font-semibold tracking-wide">{success.orderCode}</span>
             </p>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -347,31 +462,103 @@ function BaptismForm({
         </p>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
-        {fields.map((field) => (
-          <FieldRenderer
-            key={field.fieldName}
-            field={field}
-            control={control}
-            error={errors[field.fieldName]?.message as string | undefined}
-          />
-        ))}
+      <form onSubmit={handleSubmit(onSubmit)} noValidate>
+        <div className="grid grid-cols-1 gap-x-5 gap-y-5 sm:grid-cols-2">
+          {fields.map((field) => (
+            <div
+              key={field.fieldName}
+              className={cn(isFullWidthField(field) && "sm:col-span-2")}
+            >
+              <FieldRenderer
+                field={field}
+                control={control}
+                error={errors[field.fieldName]?.message as string | undefined}
+              />
+            </div>
+          ))}
 
-        <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
-          {isSubmitting ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Enviando...
-            </>
-          ) : (
-            "Confirmar inscrição"
-          )}
-        </Button>
-        <p className="text-center text-xs text-muted-foreground">
-          <span className="text-destructive">*</span> Campos obrigatórios
-        </p>
+          <div className="sm:col-span-2 mt-1 space-y-3">
+            <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Enviando...
+                </>
+              ) : (
+                "Confirmar inscrição"
+              )}
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              <span className="text-destructive">*</span> Campos obrigatórios
+            </p>
+          </div>
+        </div>
       </form>
     </Card>
+  );
+}
+
+// ── combobox com busca (listas longas) ─────────────────────────────────────────
+
+function Combobox({
+  id,
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Option[];
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((o) => o.value === value);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          id={id}
+          className={cn(
+            "h-11 w-full justify-between font-normal",
+            !selected && "text-muted-foreground"
+          )}
+        >
+          <span className="truncate">{selected ? selected.label : placeholder || "Selecione"}</span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Buscar..." />
+          <CommandList>
+            <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>
+            <CommandGroup>
+              {options.map((opt) => (
+                <CommandItem
+                  key={opt.value}
+                  value={opt.label}
+                  onSelect={() => {
+                    onChange(opt.value);
+                    setOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn("mr-2 h-4 w-4", value === opt.value ? "opacity-100" : "opacity-0")}
+                  />
+                  {opt.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -423,6 +610,8 @@ function FieldRenderer({
     );
   }
 
+  const longLabels = options.some((o) => o.label.length > 40);
+
   return (
     <div className="space-y-2">
       <Label htmlFor={field.fieldName} className="text-sm font-medium">
@@ -433,28 +622,41 @@ function FieldRenderer({
         name={field.fieldName}
         control={control}
         render={({ field: f }) => {
-          // Radio → cartões selecionáveis (não vira dropdown).
+          // Listas longas → combobox com busca.
+          if (options.length > COMBOBOX_THRESHOLD) {
+            return (
+              <Combobox
+                id={field.fieldName}
+                value={(f.value as string) || ""}
+                onChange={f.onChange}
+                options={options}
+                placeholder={field.placeholder || "Buscar e selecionar"}
+              />
+            );
+          }
+
+          // Radio (poucas opções) → cartões selecionáveis.
           if (field.fieldType === "radio" && options.length > 0) {
             return (
               <RadioGroup
                 value={(f.value as string) || ""}
                 onValueChange={f.onChange}
-                className="gap-2"
+                className={cn("grid gap-2.5", longLabels ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2")}
               >
                 {options.map((opt) => {
-                  const id = `${field.fieldName}-${opt.value}`;
+                  const optId = `${field.fieldName}-${opt.value}`;
                   const selected = f.value === opt.value;
                   return (
                     <Label
                       key={opt.value}
-                      htmlFor={id}
+                      htmlFor={optId}
                       className={cn(
-                        "flex cursor-pointer items-center gap-3 rounded-xl border p-3.5 text-sm font-normal transition-colors",
+                        "flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 text-sm font-normal transition-colors",
                         "hover:bg-accent/50",
                         selected ? "border-primary bg-primary/5" : "border-border"
                       )}
                     >
-                      <RadioGroupItem id={id} value={opt.value} />
+                      <RadioGroupItem id={optId} value={opt.value} className="mt-0.5" />
                       <span className="leading-snug text-foreground">{opt.label}</span>
                     </Label>
                   );
@@ -488,7 +690,7 @@ function FieldRenderer({
                 placeholder={field.placeholder || ""}
                 value={(f.value as string) || ""}
                 onChange={f.onChange}
-                className="min-h-24"
+                className="min-h-28"
               />
             );
           }
