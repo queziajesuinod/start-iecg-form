@@ -25,7 +25,7 @@ import api from "@/lib/apiClient";
 import { maskCPF, maskPhone } from "@/lib/masks";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Check, CheckCircle2, ChevronsUpDown, Droplets, Loader2, MapPin } from "lucide-react";
+import { Check, CheckCircle2, ChevronsUpDown, Download, Droplets, Loader2, MapPin } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -186,6 +186,94 @@ const buildSchema = (fields: FormFieldDef[]) => {
     shape[field.fieldName] = required ? base.min(1, "Campo obrigatório") : base.optional();
   }
   return z.object(shape);
+};
+
+const loadImage = (src: string): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Falha ao carregar o QR Code."));
+    img.src = src;
+  });
+
+// Gera um comprovante em imagem (PNG) com o QR Code + dados da inscrição.
+const generateTicketDataUrl = async (opts: {
+  title: string;
+  nome: string;
+  orderCode: string;
+  qr: string;
+}): Promise<string> => {
+  const { title, nome, orderCode, qr } = opts;
+  if (document.fonts?.ready) {
+    try {
+      await document.fonts.ready;
+    } catch {
+      /* segue com fonte de fallback */
+    }
+  }
+
+  const scale = 2;
+  const W = 600;
+  const H = 840;
+  const PAD = 40;
+  const BLUE = "#2e4ba6";
+  const DARK = "#1f2733";
+  const GRAY = "#6b7483";
+
+  const canvas = document.createElement("canvas");
+  canvas.width = W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Não foi possível gerar a imagem.");
+  ctx.scale(scale, scale);
+  ctx.textAlign = "center";
+
+  // Fundo
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, W, H);
+
+  // Faixa superior
+  ctx.fillStyle = BLUE;
+  ctx.fillRect(0, 0, W, 96);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "700 30px Montserrat, Arial, sans-serif";
+  ctx.fillText((title || "BATISMO").toUpperCase(), W / 2, 58, W - 2 * PAD);
+
+  // Subtítulo
+  ctx.fillStyle = GRAY;
+  ctx.font = "700 13px Lato, Arial, sans-serif";
+  ctx.fillText("COMPROVANTE DE INSCRIÇÃO", W / 2, 136);
+
+  // Nome do inscrito
+  let qrY = 196;
+  if (nome) {
+    ctx.fillStyle = DARK;
+    ctx.font = "700 22px Montserrat, Arial, sans-serif";
+    ctx.fillText(nome, W / 2, 178, W - 2 * PAD);
+    qrY = 214;
+  }
+
+  // QR Code
+  const qrImg = await loadImage(qr);
+  const qrSize = 300;
+  ctx.drawImage(qrImg, (W - qrSize) / 2, qrY, qrSize, qrSize);
+
+  // Código
+  const codeY = qrY + qrSize + 56;
+  ctx.fillStyle = GRAY;
+  ctx.font = "700 12px Lato, Arial, sans-serif";
+  ctx.fillText("CÓDIGO", W / 2, codeY - 26);
+  ctx.fillStyle = DARK;
+  ctx.font = "700 26px 'Courier New', monospace";
+  ctx.fillText(orderCode, W / 2, codeY);
+
+  // Rodapé
+  ctx.fillStyle = GRAY;
+  ctx.font = "400 13px Lato, Arial, sans-serif";
+  ctx.fillText("Apresente este QR Code no dia do batismo", W / 2, codeY + 48);
+  ctx.fillText("para confirmar sua presença.", W / 2, codeY + 68);
+
+  return canvas.toDataURL("image/png");
 };
 
 // ── página ─────────────────────────────────────────────────────────────────
@@ -399,7 +487,10 @@ function BaptismForm({
     formState: { errors, isSubmitting },
   } = useForm({ resolver: zodResolver(schema), defaultValues });
 
-  const [success, setSuccess] = useState<{ orderCode: string; qr: string } | null>(null);
+  const [success, setSuccess] = useState<{ orderCode: string; qr: string; nome: string } | null>(
+    null
+  );
+  const [downloading, setDownloading] = useState(false);
 
   const onSubmit = async (values: Record<string, unknown>) => {
     try {
@@ -420,12 +511,37 @@ function BaptismForm({
         margin: 1,
         width: 320,
       });
-      setSuccess({ orderCode, qr });
+      const nameField = fields.find((f) => /nome|name/i.test(f.fieldName));
+      const nome = nameField ? String(values[nameField.fieldName] ?? "").trim() : "";
+      setSuccess({ orderCode, qr, nome });
     } catch (err) {
       const message =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
         (err instanceof Error ? err.message : "Erro ao enviar a inscrição.");
       toast.error(message);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!success) return;
+    setDownloading(true);
+    try {
+      const dataUrl = await generateTicketDataUrl({
+        title: event.title || "Batismo",
+        nome: success.nome,
+        orderCode: success.orderCode,
+        qr: success.qr,
+      });
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = `inscricao-batismo-${success.orderCode}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Não foi possível baixar o comprovante.");
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -451,8 +567,27 @@ function BaptismForm({
               <span className="font-mono font-semibold tracking-wide">{success.orderCode}</span>
             </p>
           </div>
+          <Button
+            type="button"
+            size="lg"
+            className="mt-1 w-full gap-2 sm:w-auto"
+            onClick={handleDownload}
+            disabled={downloading}
+          >
+            {downloading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Gerando imagem...
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4" />
+                Baixar comprovante
+              </>
+            )}
+          </Button>
           <p className="text-xs text-muted-foreground">
-            Guarde este código. Você também pode tirar um print desta tela.
+            Baixe o comprovante com o QR Code ou tire um print desta tela.
           </p>
         </div>
       </Card>
